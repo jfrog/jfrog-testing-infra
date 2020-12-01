@@ -6,6 +6,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.text.StrSubstitutor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.jfrog.artifactory.client.Artifactory;
 import org.jfrog.artifactory.client.ArtifactoryClientBuilder;
 import org.jfrog.artifactory.client.ArtifactoryRequest;
@@ -57,7 +59,8 @@ public class IntegrationTestsHelper implements AutoCloseable {
     public static final String ARTIFACTORY_URL = System.getenv(ARTIFACTORY_URL_ENV);
 
     // The repository timestamp. Used to provide uniqueness across parallel test runs.
-    public static long repoTimestamp = System.currentTimeMillis();
+    public static final long repoTimestamp = System.currentTimeMillis();
+    private static final Logger log = LogManager.getLogger(IntegrationTestsHelper.class);
 
     private static final Pattern REPO_PATTERN = Pattern.compile("^jfrog-rt-tests(-\\w*)+-(\\d*)$");
 
@@ -91,7 +94,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
     public static void verifyEnvironment(String envKey) {
         if (StringUtils.isBlank(System.getenv(envKey))) {
             String msg = "'" + envKey + "' environment variable is missing!";
-            System.err.println(msg);
+            log.error(msg);
             throw new IllegalArgumentException(msg);
         }
     }
@@ -182,7 +185,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
                     .requestType(ArtifactoryRequest.ContentType.JSON)
                     .apiUrl("api/repositories/" + repoKey)
                     .requestBody(repositorySettings));
-            System.out.println("Repository " + repoKey + " created");
+            log.info("Repository " + repoKey + " created");
         } catch (Exception e) {
             fail(ExceptionUtils.getRootCauseMessage(e));
         }
@@ -196,7 +199,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
     public void deleteRepo(TestRepository repository) {
         String repoKey = getRepoKey(repository);
         artifactoryClient.repository(repoKey).delete();
-        System.out.println("Repository " + repoKey + " deleted");
+        log.info("Repository " + repoKey + " deleted");
     }
 
     /**
