@@ -234,11 +234,12 @@ public class IntegrationTestsHelper implements AutoCloseable {
      *
      * @param buildName   - Build name
      * @param buildNumber - Build number
+     * @param project     - Build project
      * @return build info for the specified build name and number
      * @throws IOException if failed to get the build info.
      */
-    public Build getBuildInfo(String buildName, String buildNumber) throws IOException {
-        return buildInfoClient.getBuildInfo(buildName, buildNumber);
+    public Build getBuildInfo(String buildName, String buildNumber, String project) throws IOException {
+        return buildInfoClient.getBuildInfo(buildName, buildNumber, project);
     }
 
     /**
