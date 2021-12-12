@@ -1,12 +1,13 @@
 version: 1
 type: gradle
 resolver:
-  repo: libs-release
-  serverId: ojo
+  repo: ecosys-maven-remote
+  serverId: internal
 deployer:
-  repo: oss-release-local
-  serverId: ojo
+  repo: ecosys-oss-release-local
+  serverId: internal
   deployMavenDescriptors: true
+  deployIvyDescriptors: true
   ivyPattern: '[organization]/[module]/ivy-[revision].xml'
   artifactPattern: '[organization]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
 useWrapper: true
