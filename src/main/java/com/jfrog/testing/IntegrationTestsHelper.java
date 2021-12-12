@@ -3,9 +3,9 @@ package com.jfrog.testing;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.text.StrSubstitutor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.apache.commons.text.StringSubstitutor;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.jfrog.artifactory.client.Artifactory;
@@ -171,7 +171,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param repoSubstitutor - Replace variables inside the repo configuration file
      * @param classLoader     - The class loader to allow read from resources
      */
-    public void createRepo(TestRepository repository, StrSubstitutor repoSubstitutor, ClassLoader classLoader) {
+    public void createRepo(TestRepository repository, StringSubstitutor repoSubstitutor, ClassLoader classLoader) {
         String repositorySettingsPath = Paths.get("integration", "settings", repository.getRepoName() + ".json").toString();
         try (InputStream inputStream = classLoader.getResourceAsStream(repositorySettingsPath)) {
             if (inputStream == null) {
