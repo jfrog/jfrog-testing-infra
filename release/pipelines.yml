@@ -1,0 +1,86 @@
+resources:
+  - name: testingInfraReleaseGit
+    type: GitRepo
+    configuration:
+      path: jfrog/jfrog-testing-infra
+      gitProvider: il_automation
+      buildOn:
+        commit: false
+      branches:
+        include: main
+
+pipelines:
+  - name: release_testing_infra
+    configuration:
+      runtime:
+        type: image
+        image:
+          auto:
+            language: java
+            versions:
+              - "11.0.0"
+      environmentVariables:
+        readOnly:
+          NEXT_VERSION: 0.0.0
+          NEXT_DEVELOPMENT_VERSION: 0.0.x-SNAPSHOT
+
+    steps:
+      - name: Release
+        type: Bash
+        configuration:
+          inputResources:
+            - name: testingInfraReleaseGit
+          integrations:
+            - name: il_automation
+            - name: entplus_deployer
+        execution:
+          onExecute:
+            - cd $res_testingUtilsGit_resourcePath
+
+            # Set env
+            - export CI=true
+            - export JFROG_BUILD_STATUS=PASS
+            - export JFROG_CLI_BUILD_NAME=ecosystem-testing-infra-release
+            - export JFROG_CLI_BUILD_NUMBER=$run_number
+            - export JFROG_CLI_BUILD_PROJECT=ecosys
+
+            # Configure git
+            - git checkout main
+            - git remote set-url origin https://$int_il_automation_token@github.com/jfrog/jfrog-testing-infra.git
+
+            # Make sure versions provided
+            - echo "Checking variables"
+            - test -n "$NEXT_VERSION" -a "$NEXT_VERSION" != "0.0.0"
+            - test -n "$NEXT_DEVELOPMENT_VERSION" -a "$NEXT_DEVELOPMENT_VERSION" != "0.0.0"
+
+            # Configure JFrog CLI
+            - curl -fL https://getcli.jfrog.io/v2-jf | sh && chmod +x jf
+            - ./jf c rm --quiet
+            - ./jf c add internal --url=$int_entplus_deployer_url --user=$int_entplus_deployer_user --password=$int_entplus_deployer_apikey
+            - ./jf gradlec --use-wrapper --repo-resolve ecosys-maven-remote --repo-deploy ecosys-oss-release-local
+
+            # Run audit
+            - ./jf ag
+
+            # Update version
+            - sed -i -e "/version=/ s/=.*/=$NEXT_VERSION/" gradle.properties
+            - git commit -am "[artifactory-release] Release version ${NEXT_VERSION} [skipRun]" --allow-empty
+            - git tag ${NEXT_VERSION}
+            - git push
+            - git push --tags
+
+            # Run install and publish
+            - ./jf gradle clean aP
+            - ./jf rt bag && ./jf rt bce
+            - ./jf rt bp
+
+            # Distribute release bundle
+            - ./jf ds rbc testing-infra $NEXT_VERSION --spec=./release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
+            - ./jf ds rbd testing-infra $NEXT_VERSION --site="releases.jfrog.io" --sync
+
+            # Update next development version
+            - sed -i -e "/version=/ s/=.*/=$NEXT_DEVELOPMENT_VERSION/" gradle.properties
+            - git commit -am "[artifactory-release] Next development version [skipRun]"
+
+            # Push changes
+            - git push
