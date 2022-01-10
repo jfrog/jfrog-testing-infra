@@ -23,13 +23,13 @@ const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
 
 func main() {
-	err := SetupLocalArtifactory()
+	err := setupLocalArtifactory()
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func SetupLocalArtifactory() (err error) {
+func setupLocalArtifactory() (err error) {
 	jfrogHome := os.Getenv(jfrogHomeEnv)
 	if jfrogHome == "" {
 		jfrogHome, err = setJfrogHome()
@@ -99,13 +99,15 @@ func renameArtifactoryDir(jfrogHome string) error {
 	}
 	return errors.New("artifactory dir was not found after extracting")
 }
+
+// Creates and sets the jfrog home directory at the parent of the working directory.
 func setJfrogHome() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 
-	jfrogHome := filepath.Join(wd, "jfrog_home")
+	jfrogHome := filepath.Join(filepath.Dir(wd), "jfrog_home")
 	err = os.MkdirAll(jfrogHome, os.ModePerm)
 	if err != nil {
 		return "", err
@@ -191,6 +193,7 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 		return "", errors.New("failed downloading Artifactory. Releases response: " + resp.Status)
 	}
 
+	// Extract archive file name.
 	_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition"))
 	if err != nil {
 		return "", err
