@@ -22,6 +22,7 @@ const maxConnectionWaitSeconds = 180
 const waitSleepIntervalSeconds = 10
 const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
+const localArtifactoryUrl = "http://localhost:8081/artifactory/"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -160,7 +161,7 @@ func waitForArtifactorySuccessfulPing() error {
 }
 
 func ping() (*http.Response, error) {
-	url := "http://localhost:8081/artifactory/api/system/ping"
+	url := localArtifactoryUrl + "api/system/ping"
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -171,9 +172,10 @@ func ping() (*http.Response, error) {
 
 // Custom URL base is required when creating federated repositories.
 func setCustomUrlBase() error {
-	url := "http://localhost:8081/artifactory/api/system/configuration/baseUrl"
+	log.Println("Setting custom URL base...")
 
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte("http://localhost:8081/artifactoryy/")))
+	url := localArtifactoryUrl + "api/system/configuration/baseUrl"
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(localArtifactoryUrl)))
 	if err != nil {
 		return err
 	}
@@ -186,6 +188,16 @@ func setCustomUrlBase() error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
 		return fmt.Errorf("failed setting custom url. response: %d", resp.StatusCode)
 	}
+
+	// Verify connection after setting custom url.
+	resp, err = ping()
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed reaching to Artifactory after setting custom url base. response: %d", resp.StatusCode)
+	}
+
 	return nil
 }
 
@@ -220,7 +232,7 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 		return "", err
 	}
 	filename := params["filename"]
-	log.Println("Extracted archive name: " + filename)
+	log.Println("Extracted archive name from response: " + filename)
 
 	pathToArchive = filepath.Join(downloadDest, filename)
 	file, err := os.Create(pathToArchive)
