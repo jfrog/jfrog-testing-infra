@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/mholt/archiver/v3"
@@ -83,7 +84,7 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	return nil
+	return setCustomUrlBase()
 }
 
 func renameArtifactoryDir(jfrogHome string) error {
@@ -166,6 +167,26 @@ func ping() (*http.Response, error) {
 		return nil, err
 	}
 	return http.DefaultClient.Do(req)
+}
+
+// Custom URL base is required when creating federated repositories.
+func setCustomUrlBase() error {
+	url := "http://localhost:8081/artifactory/api/system/configuration/baseUrl"
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte("http://localhost:8081/artifactoryy/")))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth("admin", "password")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	// Artifactory might return 500 because the url has allegedly changed.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
+		return fmt.Errorf("failed setting custom url. response: %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func downloadArtifactory(downloadDest string) (pathToArchive string, err error) {
