@@ -88,6 +88,7 @@ func setupLocalArtifactory() (err error) {
 	return setCustomUrlBase()
 }
 
+// Rename the directory that was extracted from the archive, to easily access in the rest of the script.
 func renameArtifactoryDir(jfrogHome string) error {
 	fileInfo, err := ioutil.ReadDir(jfrogHome)
 	if err != nil {
@@ -149,6 +150,10 @@ func waitForArtifactorySuccessfulPing() error {
 		if err != nil {
 			log.Printf("Receieved error: %s. %s", err, tryingLog)
 		} else {
+			err = response.Body.Close()
+			if err != nil {
+				return err
+			}
 			if response.StatusCode == http.StatusOK {
 				log.Println("Artifactory is up!")
 				return nil
@@ -184,6 +189,11 @@ func setCustomUrlBase() error {
 	if err != nil {
 		return err
 	}
+	err = resp.Body.Close()
+	if err != nil {
+		return err
+	}
+
 	// Artifactory might return 500 because the url has allegedly changed.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
 		return fmt.Errorf("failed setting custom url. response: %d", resp.StatusCode)
@@ -191,6 +201,10 @@ func setCustomUrlBase() error {
 
 	// Verify connection after setting custom url.
 	resp, err = ping()
+	if err != nil {
+		return err
+	}
+	err = resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -221,6 +235,10 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed getting archive: %s", err)
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return "", err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", errors.New("failed downloading Artifactory. Releases response: " + resp.Status)
@@ -262,11 +280,12 @@ func createLicenseFile(jfrogHome string) (err error) {
 		log.Println("No license provided. Skipping.")
 	}
 	defer func() {
-		e := os.Setenv(licenseEnv, "")
-		if err == nil {
-			err = e
-		} else {
-			log.Println("error when unsetting env: " + e.Error())
+		if e := os.Unsetenv(licenseEnv); e != nil {
+			if err == nil {
+				err = e
+			} else {
+				log.Println("error when unsetting env: " + e.Error())
+			}
 		}
 	}()
 
