@@ -212,6 +212,7 @@ func setCustomUrlBase() error {
 		return fmt.Errorf("failed reaching to Artifactory after setting custom url base. response: %d", resp.StatusCode)
 	}
 
+	log.Println("Done setting custom URL base.")
 	return nil
 }
 
@@ -224,6 +225,8 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 		url += "windows.zip"
 	case "linux":
 		url += "linux.tar.gz"
+	default:
+		return "", errors.New("the OS on this machine is currently unsupported. Supported OS are darwin, windows and linux")
 	}
 
 	log.Println("Downloading Artifactory from URL: " + url)
@@ -236,10 +239,16 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 	if err != nil {
 		return "", fmt.Errorf("failed getting archive: %s", err)
 	}
-	err = resp.Body.Close()
-	if err != nil {
-		return "", err
-	}
+	defer func() {
+		if e := resp.Body.Close(); e != nil {
+			if err == nil {
+				err = e
+			} else {
+				log.Println("error when closing body after download: " + e.Error())
+			}
+		}
+	}()
+
 	if resp.StatusCode != http.StatusOK {
 		return "", errors.New("failed downloading Artifactory. Releases response: " + resp.Status)
 	}
@@ -258,9 +267,12 @@ func downloadArtifactory(downloadDest string) (pathToArchive string, err error) 
 		return "", err
 	}
 	defer func() {
-		e := file.Close()
-		if err == nil {
-			err = e
+		if e := file.Close(); e != nil {
+			if err == nil {
+				err = e
+			} else {
+				log.Println("error when closing archive file: " + e.Error())
+			}
 		}
 	}()
 	_, err = io.Copy(file, resp.Body)
