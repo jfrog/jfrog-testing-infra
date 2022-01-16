@@ -1,4 +1,4 @@
-module github.com/jfrog/jfrog-testing-infra
+module github.com/jfrog/jfrog-testing-infra/go
 
 go 1.17
 
