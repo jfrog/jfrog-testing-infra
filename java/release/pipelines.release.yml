@@ -35,7 +35,7 @@ pipelines:
             - name: entplus_deployer
         execution:
           onExecute:
-            - cd $res_testingInfraReleaseGit_resourcePath
+            - cd $res_testingInfraReleaseGit_resourcePath/java
 
             # Set env
             - export CI=true
