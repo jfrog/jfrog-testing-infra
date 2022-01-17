@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const maxConnectionWaitSeconds = 180
+const maxConnectionWaitSeconds = 300
 const waitSleepIntervalSeconds = 10
 const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
