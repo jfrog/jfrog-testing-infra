@@ -23,6 +23,8 @@ const waitSleepIntervalSeconds = 10
 const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
 const localArtifactoryUrl = "http://localhost:8081/artifactory/"
+const defaultUsername = "admin"
+const defaultPassword = "password"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -85,7 +87,12 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	return setCustomUrlBase()
+	err = setCustomUrlBase()
+	if err != nil {
+		return err
+	}
+
+	return enableArchiveIndex()
 }
 
 // Rename the directory that was extracted from the archive, to easily access in the rest of the script.
@@ -184,7 +191,7 @@ func setCustomUrlBase() error {
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth("admin", "password")
+	req.SetBasicAuth(defaultUsername, defaultPassword)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -322,4 +329,62 @@ func isMac() bool {
 
 func isWindows() bool {
 	return runtime.GOOS == "windows"
+}
+
+func enableArchiveIndex() error {
+	log.Println("Enabling archive index...")
+	confStr, err := handleConfiguration("GET", nil)
+	if err != nil {
+		return err
+	}
+
+	if !strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
+		return errors.New("failed setting the archive index property - attribute does not exist in configuration")
+	}
+	confStr = strings.Replace(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true), -1)
+
+	// Post new configuration
+	_, err = handleConfiguration("POST", strings.NewReader(confStr))
+	return err
+}
+
+func handleConfiguration(method string, body io.Reader) (string, error) {
+	url := localArtifactoryUrl + "api/system/configuration"
+
+	log.Println(method + "ing Artifactory configuration...")
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(defaultUsername, defaultPassword)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if e := resp.Body.Close(); e != nil {
+			if err == nil {
+				err = e
+			} else {
+				log.Println("error when closing body after download: " + e.Error())
+			}
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed %sing Artifactory configuration. response: %d", method, resp.StatusCode)
+	}
+
+	buf := new(strings.Builder)
+	n, err := io.Copy(buf, resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if n == 0 {
+		return "", errors.New("failed reading response body")
+	}
+	return buf.String(), nil
+}
+
+func getArchiveIndexEnabledAttribute(value bool) string {
+	return fmt.Sprintf("<archiveIndexEnabled>%v</archiveIndexEnabled>", value)
 }
