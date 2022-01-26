@@ -23,6 +23,8 @@ const waitSleepIntervalSeconds = 10
 const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
 const localArtifactoryUrl = "http://localhost:8081/artifactory/"
+const defaultUsername = "admin"
+const defaultPassword = "password"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -189,7 +191,7 @@ func setCustomUrlBase() error {
 	if err != nil {
 		return err
 	}
-	req.SetBasicAuth("admin", "password")
+	req.SetBasicAuth(defaultUsername, defaultPassword)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -337,7 +339,7 @@ func enableArchiveIndex() error {
 	}
 
 	if !strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
-		return errors.New("failed setting the archive index property - attribute does not exit in configuration")
+		return errors.New("failed setting the archive index property - attribute does not exist in configuration")
 	}
 	confStr = strings.Replace(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true), -1)
 
@@ -354,7 +356,7 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.SetBasicAuth("admin", "password")
+	req.SetBasicAuth(defaultUsername, defaultPassword)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", err
