@@ -1,4 +1,4 @@
-module github.com/RobiNino/jfrog-testing-infra/local-rt-setup
+module github.com/jfrog/jfrog-testing-infra/local-rt-setup
 
 go 1.17
 
