@@ -34,6 +34,11 @@ func main() {
 }
 
 func setupLocalArtifactory() (err error) {
+	license := os.Getenv(licenseEnv)
+	if license == "" {
+		return errors.New("no license provided. Aborting. Provide license by setting the '" + licenseEnv + "' env var")
+	}
+
 	jfrogHome := os.Getenv(jfrogHomeEnv)
 	if jfrogHome == "" {
 		jfrogHome, err = setJfrogHome()
@@ -72,7 +77,7 @@ func setupLocalArtifactory() (err error) {
 		}
 	}
 
-	err = createLicenseFile(jfrogHome)
+	err = createLicenseFile(jfrogHome, license)
 	if err != nil {
 		return err
 	}
@@ -291,13 +296,9 @@ func extract(archivePath string, destDir string) error {
 	return archiver.Unarchive(archivePath, destDir)
 }
 
-func createLicenseFile(jfrogHome string) (err error) {
+func createLicenseFile(jfrogHome, license string) (err error) {
 	log.Println("Creating license...")
 
-	license := os.Getenv(licenseEnv)
-	if license == "" {
-		log.Println("No license provided. Skipping.")
-	}
 	defer func() {
 		if e := os.Unsetenv(licenseEnv); e != nil {
 			if err == nil {
