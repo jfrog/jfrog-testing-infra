@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/mholt/archiver/v3"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +27,7 @@ const licenseEnv = "RTLIC"
 const localArtifactoryUrl = "http://localhost:8081/artifactory/"
 const defaultUsername = "admin"
 const defaultPassword = "password"
+const defaultVersion = "[RELEASE]"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -55,7 +58,21 @@ func setupLocalArtifactory() (err error) {
 		return fmt.Errorf("artifactory dir already exists in jfrog home: " + filepath.Join(jfrogHome, "artifactory"))
 	}
 
-	pathToArchive, err := downloadArtifactory(jfrogHome)
+	rtVersion := flag.String("rt-version", defaultVersion, "the version of Artifactory to download")
+	flag.Parse()
+	artifactory6 := false
+	if *rtVersion != defaultVersion {
+		versionParts := strings.Split(*rtVersion, ".")
+		majorVer, err := strconv.Atoi(versionParts[0])
+		if err == nil {
+			if majorVer < 6 {
+				return errors.New("this tool supports Artifactory 6 or higher")
+			}
+			artifactory6 = majorVer == 6
+		}
+	}
+
+	pathToArchive, err := downloadArtifactory(jfrogHome, *rtVersion, artifactory6)
 	if err != nil {
 		return err
 	}
@@ -70,19 +87,25 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	if isMac() {
+	if !artifactory6 && isMac() {
 		err = os.Chmod(filepath.Join(jfrogHome, "artifactory", "var"), os.ModePerm)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = createLicenseFile(jfrogHome, license)
+	err = createLicenseFile(jfrogHome, license, artifactory6)
 	if err != nil {
 		return err
 	}
 
-	err = startArtifactory(jfrogHome)
+	var binDir string
+	if artifactory6 {
+		binDir = filepath.Join(jfrogHome, "artifactory", "bin")
+	} else {
+		binDir = filepath.Join(jfrogHome, "artifactory", "app", "bin")
+	}
+	err = startArtifactory(binDir)
 	if err != nil {
 		return err
 	}
@@ -93,7 +116,7 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	err = setCustomUrlBase()
-	if err != nil {
+	if err != nil || artifactory6 {
 		return err
 	}
 
@@ -135,11 +158,8 @@ func setJfrogHome() (string, error) {
 	return jfrogHome, err
 }
 
-func startArtifactory(jfrogHome string) error {
+func startArtifactory(binDir string) error {
 	log.Println("Starting Artifactory...")
-
-	binDir := filepath.Join(jfrogHome, "artifactory", "app", "bin")
-
 	var cmd *exec.Cmd
 	if isWindows() {
 		cmd = exec.Command(filepath.Join(binDir, "InstallService.bat"))
@@ -184,6 +204,7 @@ func ping() (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.SetBasicAuth(defaultUsername, defaultPassword)
 	return http.DefaultClient.Do(req)
 }
 
@@ -228,17 +249,21 @@ func setCustomUrlBase() error {
 	return nil
 }
 
-func downloadArtifactory(downloadDest string) (pathToArchive string, err error) {
-	url := "https://releases.jfrog.io/artifactory/artifactory-pro/org/artifactory/pro/jfrog-artifactory-pro/[RELEASE]/jfrog-artifactory-pro-[RELEASE]-"
-	switch runtime.GOOS {
-	case "darwin":
-		url += "darwin.tar.gz"
-	case "windows":
-		url += "windows.zip"
-	case "linux":
-		url += "linux.tar.gz"
-	default:
-		return "", errors.New("the OS on this machine is currently unsupported. Supported OS are darwin, windows and linux")
+func downloadArtifactory(downloadDest, rtVersion string, artifactory6 bool) (pathToArchive string, err error) {
+	url := fmt.Sprintf("https://releases.jfrog.io/artifactory/artifactory-pro/org/artifactory/pro/jfrog-artifactory-pro/%[1]s/jfrog-artifactory-pro-%[1]s", rtVersion)
+	if !artifactory6 {
+		switch runtime.GOOS {
+		case "darwin":
+			url += "-darwin.tar.gz"
+		case "windows":
+			url += "-windows.zip"
+		case "linux":
+			url += "-linux.tar.gz"
+		default:
+			return "", errors.New("the OS on this machine is currently unsupported. Supported OS are darwin, windows and linux")
+		}
+	} else {
+		url += ".zip"
 	}
 
 	log.Println("Downloading Artifactory from URL: " + url)
@@ -296,7 +321,7 @@ func extract(archivePath string, destDir string) error {
 	return archiver.Unarchive(archivePath, destDir)
 }
 
-func createLicenseFile(jfrogHome, license string) (err error) {
+func createLicenseFile(jfrogHome, license string, artifactory6 bool) (err error) {
 	log.Println("Creating license...")
 
 	defer func() {
@@ -309,7 +334,12 @@ func createLicenseFile(jfrogHome, license string) (err error) {
 		}
 	}()
 
-	fileDest := filepath.Join(jfrogHome, "artifactory", "var", "etc", "artifactory", "artifactory.cluster.license")
+	var fileDest string
+	if artifactory6 {
+		fileDest = filepath.Join(jfrogHome, "artifactory", "etc", "artifactory.lic")
+	} else {
+		fileDest = filepath.Join(jfrogHome, "artifactory", "var", "etc", "artifactory", "artifactory.cluster.license")
+	}
 	return os.WriteFile(fileDest, []byte(license), 0500)
 }
 
