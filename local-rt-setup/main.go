@@ -63,13 +63,17 @@ func setupLocalArtifactory() (err error) {
 	artifactory6 := false
 	if *rtVersion != defaultVersion {
 		versionParts := strings.Split(*rtVersion, ".")
-		majorVer, err := strconv.Atoi(versionParts[0])
-		if err == nil {
-			if majorVer < 6 {
-				return errors.New("this tool supports Artifactory 6 or higher")
-			}
-			artifactory6 = majorVer == 6
+		if len(versionParts) != 3 {
+			return errors.New("the Artifactory version is invalid. It must be [RELEASE] or match this format: X.X.X")
 		}
+		majorVer, err := strconv.Atoi(versionParts[0])
+		if err != nil {
+			return err
+		}
+		if majorVer < 6 {
+			return errors.New("this tool supports Artifactory 6 or higher")
+		}
+		artifactory6 = majorVer == 6
 	}
 
 	pathToArchive, err := downloadArtifactory(jfrogHome, *rtVersion, artifactory6)
