@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mholt/archiver/v3"
 	"io"
 	"io/ioutil"
 	"log"
@@ -18,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mholt/archiver/v3"
 )
 
 const maxConnectionWaitSeconds = 300
@@ -42,20 +43,9 @@ func setupLocalArtifactory() (err error) {
 		return errors.New("no license provided. Aborting. Provide license by setting the '" + licenseEnv + "' env var")
 	}
 
-	jfrogHome := os.Getenv(jfrogHomeEnv)
-	if jfrogHome == "" {
-		jfrogHome, err = setJfrogHome()
-		if err != nil {
-			return err
-		}
-	}
-
-	exists, err := isExists(filepath.Join(jfrogHome, "artifactory"))
+	jfrogHome, err := prepareJFrogHome()
 	if err != nil {
 		return err
-	}
-	if exists {
-		return fmt.Errorf("artifactory dir already exists in jfrog home: " + filepath.Join(jfrogHome, "artifactory"))
 	}
 
 	rtVersion := flag.String("rt-version", defaultVersion, "the version of Artifactory to download")
@@ -142,24 +132,42 @@ func renameArtifactoryDir(jfrogHome string) error {
 	return errors.New("artifactory dir was not found after extracting")
 }
 
-// Creates and sets the jfrog home directory at the parent of the working directory.
-func setJfrogHome() (string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
+// Creates and sets the jfrog home directory at the user's home directory, or as provided by the JFROG_HOME environment variable.
+func prepareJFrogHome() (string, error) {
+	// Read JFROG_HOME environment variable
+	jfrogHome := os.Getenv(jfrogHomeEnv)
+
+	// If JFROG_HOME environment variable is not set, set JFROG_HOME=${USER_HOME}/jfrog_home
+	if jfrogHome == "" {
+		wd, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+
+		jfrogHome = filepath.Join(wd, "jfrog_home")
+		if err = os.Setenv(jfrogHomeEnv, jfrogHome); err != nil {
+			return "", err
+		}
 	}
 
-	jfrogHome := filepath.Join(filepath.Dir(wd), "jfrog_home")
-	err = os.MkdirAll(jfrogHome, os.ModePerm)
+	// Create jfrog_home directory if needed
+	exists, err := isExists(jfrogHome)
 	if err != nil {
 		return "", err
+	}
+	if !exists {
+		return jfrogHome, os.MkdirAll(jfrogHome, os.ModePerm)
 	}
 
-	err = os.Setenv(jfrogHomeEnv, jfrogHome)
+	// If jfrog_home/artifactory directory already exists, return error
+	exists, err = isExists(filepath.Join(jfrogHome, "artifactory"))
 	if err != nil {
 		return "", err
 	}
-	return jfrogHome, err
+	if exists {
+		return "", fmt.Errorf("artifactory dir already exists in jfrog home: " + filepath.Join(jfrogHome, "artifactory"))
+	}
+	return jfrogHome, nil
 }
 
 func startArtifactory(binDir string) error {
