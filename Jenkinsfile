@@ -14,10 +14,10 @@ timeout(time: 45, unit: 'SECONDS') {
                 httpMode: 'GET',
                 url: BADGE_LINK,
                 validResponseCodes: '200')
-
-        if (response.content.contains('failing')) {
+        body = response.content.toLowerCase()
+        if (body.contains('failing')) {
             currentBuild.result = 'FAILURE'
-        } else if (response.content.contains('passing')) {
+        } else if (body.contains('passing')) {
             currentBuild.result = 'SUCCESS'
         } else {
             currentBuild.result = 'NOT_BUILT'
