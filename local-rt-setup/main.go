@@ -101,9 +101,11 @@ func setupLocalArtifactory() (err error) {
 		binDir = filepath.Join(jfrogHome, "artifactory", "app", "bin")
 	}
 
-	err = triggerTokenCreation(jfrogHome)
-	if err != nil {
-		return err
+	if !artifactory6 {
+		err = triggerTokenCreation(jfrogHome)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = startArtifactory(binDir)
@@ -111,7 +113,7 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	err = waitForArtifactorySuccessfulPing(jfrogHome)
+	err = waitForArtifactorySuccessfulPing(jfrogHome, artifactory6)
 	if err != nil {
 		return err
 	}
@@ -190,12 +192,20 @@ func startArtifactory(binDir string) error {
 	return cmd.Run()
 }
 
-func waitForArtifactorySuccessfulPing(jfrogHome string) error {
+func waitForArtifactorySuccessfulPing(jfrogHome string, artifactory6 bool) error {
 	log.Println("Waiting for successful connection with Artifactory...")
 	tryingLog := fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
 	tokenCreated := false
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
+
+		if !artifactory6 && !tokenCreated {
+			var err error
+			tokenCreated, err = extractGeneratedToken(jfrogHome)
+			if err != nil {
+				return err
+			}
+		}
 
 		response, err := ping()
 		if err != nil {
@@ -210,12 +220,6 @@ func waitForArtifactorySuccessfulPing(jfrogHome string) error {
 				return nil
 			} else {
 				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
-			}
-		}
-		if !tokenCreated {
-			tokenCreated, err = getGeneratedToken(jfrogHome)
-			if err != nil {
-				return err
 			}
 		}
 	}
