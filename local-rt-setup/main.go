@@ -229,7 +229,7 @@ func triggerTokenCreation(jfrogHome string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0666)
+	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0600)
 }
 
 func extractGeneratedToken(jfrogHome string) (bool, error) {
