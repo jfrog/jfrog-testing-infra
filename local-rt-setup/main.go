@@ -243,7 +243,7 @@ func extractGeneratedToken(jfrogHome string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0666)
+	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0600)
 	return err != nil, err
 }
 
