@@ -244,10 +244,7 @@ func extractGeneratedToken(jfrogHome string) (bool, error) {
 		return false, err
 	}
 	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0666)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	return err != nil, err
 }
 
 func ping() (*http.Response, error) {
