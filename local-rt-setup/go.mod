@@ -1,6 +1,6 @@
 module github.com/jfrog/jfrog-testing-infra/local-rt-setup
 
-go 1.17
+go 1.19
 
 require github.com/mholt/archiver/v3 v3.5.1
 

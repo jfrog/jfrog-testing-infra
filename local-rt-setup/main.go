@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
@@ -29,6 +28,8 @@ const localArtifactoryUrl = "http://localhost:8081/artifactory/"
 const defaultUsername = "admin"
 const defaultPassword = "password"
 const defaultVersion = "[RELEASE]"
+const tokenJson = "token.json"
+const generateTokenJson = "generate.token.json"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -99,12 +100,18 @@ func setupLocalArtifactory() (err error) {
 	} else {
 		binDir = filepath.Join(jfrogHome, "artifactory", "app", "bin")
 	}
+
+	err = triggerTokenCreation(jfrogHome)
+	if err != nil {
+		return err
+	}
+
 	err = startArtifactory(binDir)
 	if err != nil {
 		return err
 	}
 
-	err = waitForArtifactorySuccessfulPing()
+	err = waitForArtifactorySuccessfulPing(jfrogHome)
 	if err != nil {
 		return err
 	}
@@ -119,7 +126,7 @@ func setupLocalArtifactory() (err error) {
 
 // Rename the directory that was extracted from the archive, to easily access in the rest of the script.
 func renameArtifactoryDir(jfrogHome string) error {
-	fileInfo, err := ioutil.ReadDir(jfrogHome)
+	fileInfo, err := os.ReadDir(jfrogHome)
 	if err != nil {
 		return err
 	}
@@ -183,10 +190,10 @@ func startArtifactory(binDir string) error {
 	return cmd.Run()
 }
 
-func waitForArtifactorySuccessfulPing() error {
+func waitForArtifactorySuccessfulPing(jfrogHome string) error {
 	log.Println("Waiting for successful connection with Artifactory...")
 	tryingLog := fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
-
+	tokenCreated := false
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 
@@ -205,8 +212,41 @@ func waitForArtifactorySuccessfulPing() error {
 				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
 			}
 		}
+		if !tokenCreated {
+			tokenCreated, err = getGeneratedToken(jfrogHome)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return errors.New("could not connect to Artifactory")
+}
+
+// More info at - https://www.jfrog.com/confluence/display/JFROG/Managing+Keys#ManagingKeys-CreatinganAutomaticAdminToken
+func triggerTokenCreation(jfrogHome string) error {
+	generateKeysDir := filepath.Join(jfrogHome, "artifactory", "var", "bootstrap", "etc", "access", "keys")
+	err := os.MkdirAll(generateKeysDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0666)
+}
+func getGeneratedToken(jfrogHome string) (bool, error) {
+	generatedTokenPath := filepath.Join(jfrogHome, "artifactory", "var", "etc", "access", "keys", tokenJson)
+	exists, err := isExists(generatedTokenPath)
+	if err != nil || !exists {
+		return false, err
+	}
+
+	tokenData, err := os.ReadFile(generatedTokenPath)
+	if err != nil {
+		return false, err
+	}
+	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0666)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func ping() (*http.Response, error) {
