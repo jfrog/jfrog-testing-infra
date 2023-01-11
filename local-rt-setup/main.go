@@ -231,7 +231,8 @@ func triggerTokenCreation(jfrogHome string) error {
 	}
 	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0666)
 }
-func getGeneratedToken(jfrogHome string) (bool, error) {
+
+func extractGeneratedToken(jfrogHome string) (bool, error) {
 	generatedTokenPath := filepath.Join(jfrogHome, "artifactory", "var", "etc", "access", "keys", tokenJson)
 	exists, err := isExists(generatedTokenPath)
 	if err != nil || !exists {
