@@ -231,9 +231,10 @@ func triggerTokenCreation(jfrogHome string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0666)
+	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0600)
 }
-func getGeneratedToken(jfrogHome string) (bool, error) {
+
+func extractGeneratedToken(jfrogHome string) (bool, error) {
 	generatedTokenPath := filepath.Join(jfrogHome, "artifactory", "var", "etc", "access", "keys", tokenJson)
 	exists, err := isExists(generatedTokenPath)
 	if err != nil || !exists {
@@ -244,11 +245,8 @@ func getGeneratedToken(jfrogHome string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0666)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0600)
+	return err != nil, err
 }
 
 func ping() (*http.Response, error) {
