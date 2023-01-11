@@ -197,6 +197,14 @@ func waitForArtifactorySuccessfulPing(jfrogHome string) error {
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 
+		if !tokenCreated {
+			var err error
+			tokenCreated, err = getGeneratedToken(jfrogHome)
+			if err != nil {
+				return err
+			}
+		}
+
 		response, err := ping()
 		if err != nil {
 			log.Printf("Receieved error: %s. %s", err, tryingLog)
@@ -210,12 +218,6 @@ func waitForArtifactorySuccessfulPing(jfrogHome string) error {
 				return nil
 			} else {
 				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
-			}
-		}
-		if !tokenCreated {
-			tokenCreated, err = getGeneratedToken(jfrogHome)
-			if err != nil {
-				return err
 			}
 		}
 	}
