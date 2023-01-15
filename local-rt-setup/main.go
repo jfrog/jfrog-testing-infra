@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,6 +31,8 @@ const defaultPassword = "password"
 const defaultVersion = "[RELEASE]"
 const tokenJson = "token.json"
 const generateTokenJson = "generate.token.json"
+const githubEnvFileEnv = "GITHUB_ENV"
+const jfrogLocalAccessToken = "JFROG_LOCAL_ACCESS_TOKEN"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -247,8 +250,38 @@ func extractGeneratedToken(jfrogHome string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	err = os.WriteFile(filepath.Join(jfrogHome, tokenJson), tokenData, 0600)
+
+	err = exportTokenUsingGithubEnvFile(tokenData)
 	return err != nil, err
+}
+
+// More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+func exportTokenUsingGithubEnvFile(tokenData []byte) (err error) {
+	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
+	if !exists {
+		return
+	}
+	var token struct {
+		Token string `json:"token"`
+	}
+	err = json.Unmarshal(tokenData, &token)
+	if err != nil {
+		return
+	}
+	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return
+	}
+
+	defer func() {
+		e := githubEnvFile.Close()
+		if err == nil {
+			err = e
+		}
+	}()
+
+	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s", jfrogLocalAccessToken, token.Token))
+	return
 }
 
 func ping() (*http.Response, error) {
