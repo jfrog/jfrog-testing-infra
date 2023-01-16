@@ -280,7 +280,7 @@ func exportTokenUsingGithubEnvFile(tokenData []byte) (err error) {
 		}
 	}()
 
-	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s", jfrogLocalAccessToken, token.Token))
+	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, token.Token))
 	return
 }
 
