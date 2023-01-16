@@ -252,7 +252,7 @@ func extractGeneratedToken(jfrogHome string) (bool, error) {
 	}
 
 	err = exportTokenUsingGithubEnvFile(tokenData)
-	return err != nil, err
+	return err == nil, err
 }
 
 // More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
