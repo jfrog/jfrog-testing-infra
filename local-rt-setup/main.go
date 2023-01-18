@@ -345,7 +345,7 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 		}
 	}()
 
-	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
+	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, token.Token))
 	return
 }
 
