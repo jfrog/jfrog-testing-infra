@@ -26,13 +26,14 @@ const waitSleepIntervalSeconds = 10
 const jfrogHomeEnv = "JFROG_HOME"
 const licenseEnv = "RTLIC"
 const localArtifactoryUrl = "http://localhost:8081/artifactory/"
+const localAccessUrl = "http://localhost:8081/access/"
 const defaultUsername = "admin"
 const defaultPassword = "password"
 const defaultVersion = "[RELEASE]"
 const tokenJson = "token.json"
 const generateTokenJson = "generate.token.json"
 const githubEnvFileEnv = "GITHUB_ENV"
-const jfrogLocalAccessToken = "JFROG_LOCAL_ACCESS_TOKEN"
+const jfrogLocalAccessToken = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -116,9 +117,21 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	err = waitForArtifactorySuccessfulPing(jfrogHome, artifactory6)
+	jfacToken, err := waitForArtifactorySuccessfulPing(jfrogHome, artifactory6)
 	if err != nil {
 		return err
+	}
+
+	if jfacToken != "" {
+		var adminToken string
+		adminToken, err = getAdminTokenUsingJfacToken(jfacToken)
+		if err != nil {
+			return err
+		}
+		err = exportTokenUsingGithubEnvFile(adminToken)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = setCustomUrlBase()
@@ -195,38 +208,37 @@ func startArtifactory(binDir string) error {
 	return cmd.Run()
 }
 
-func waitForArtifactorySuccessfulPing(jfrogHome string, artifactory6 bool) error {
+func waitForArtifactorySuccessfulPing(jfrogHome string, artifactory6 bool) (jfacToken string, err error) {
 	log.Println("Waiting for successful connection with Artifactory...")
 	tryingLog := fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
-	tokenCreated := false
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 
-		if !artifactory6 && !tokenCreated {
-			var err error
-			tokenCreated, err = extractGeneratedToken(jfrogHome)
+		if !artifactory6 && jfacToken == "" {
+			jfacToken, err = extractGeneratedJfacTokenToken(jfrogHome)
 			if err != nil {
-				return err
+				return
 			}
 		}
-
-		response, err := ping()
+		var response *http.Response
+		response, err = ping()
 		if err != nil {
 			log.Printf("Receieved error: %s. %s", err, tryingLog)
 		} else {
 			err = response.Body.Close()
 			if err != nil {
-				return err
+				return
 			}
 			if response.StatusCode == http.StatusOK {
 				log.Println("Artifactory is up!")
-				return nil
+				return
 			} else {
 				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
 			}
 		}
 	}
-	return errors.New("could not connect to Artifactory")
+	err = errors.New("could not connect to Artifactory")
+	return
 }
 
 // More info at - https://www.jfrog.com/confluence/display/JFROG/Managing+Keys#ManagingKeys-CreatinganAutomaticAdminToken
@@ -239,26 +251,15 @@ func triggerTokenCreation(jfrogHome string) error {
 	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0600)
 }
 
-func extractGeneratedToken(jfrogHome string) (bool, error) {
+func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err error) {
 	generatedTokenPath := filepath.Join(jfrogHome, "artifactory", "var", "etc", "access", "keys", tokenJson)
 	exists, err := isExists(generatedTokenPath)
 	if err != nil || !exists {
-		return false, err
+		return
 	}
 
 	tokenData, err := os.ReadFile(generatedTokenPath)
 	if err != nil {
-		return false, err
-	}
-
-	err = exportTokenUsingGithubEnvFile(tokenData)
-	return err == nil, err
-}
-
-// More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
-func exportTokenUsingGithubEnvFile(tokenData []byte) (err error) {
-	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
-	if !exists {
 		return
 	}
 	var token struct {
@@ -268,6 +269,19 @@ func exportTokenUsingGithubEnvFile(tokenData []byte) (err error) {
 	if err != nil {
 		return
 	}
+
+	jfacToken = token.Token
+	return
+}
+
+// More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
+	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
+	if !exists {
+		log.Printf("GITHUB_ENV not set, assuming the script is not running on Github. Skipping token export...")
+		return
+	}
+
 	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		return
@@ -280,8 +294,59 @@ func exportTokenUsingGithubEnvFile(tokenData []byte) (err error) {
 		}
 	}()
 
-	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, token.Token))
+	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
 	return
+}
+
+// The token received from local artifactory is - ("aud": "jfac@*")
+// We use it to fetch an admin all token - ("aud": "*@*")
+func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
+	url := localAccessUrl + "api/v1/tokens"
+
+	type tokenInfo struct {
+		AccessToken string `json:"access_token,omitempty"`
+		Audience    string `json:"audience,omitempty"`
+	}
+	tokenParams := tokenInfo{
+		Audience: "*@*",
+	}
+
+	requestContent, err := json.Marshal(tokenParams)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestContent))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+jfacToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if e := resp.Body.Close(); e != nil {
+			if err == nil {
+				err = e
+			} else {
+				log.Println("error when closing body after getting Admin Token from Artifactory: " + e.Error())
+			}
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed getting Admin Token from Artifactory. response: %d", resp.StatusCode)
+	}
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	err = json.Unmarshal(respBody, &tokenParams)
+	if err != nil {
+		return "", err
+	}
+	return tokenParams.AccessToken, nil
 }
 
 func ping() (*http.Response, error) {
