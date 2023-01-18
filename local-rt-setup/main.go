@@ -278,6 +278,29 @@ func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err err
 	return
 }
 
+// More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
+	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
+	if !exists {
+		return
+	}
+
+	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return
+	}
+
+	defer func() {
+		e := githubEnvFile.Close()
+		if err == nil {
+			err = e
+		}
+	}()
+
+	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
+	return
+}
+
 // The token received from local artifactory is - ("aud": "jfac@*")
 // We use it to fetch an admin all token - ("aud": "*@*")
 func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
@@ -324,29 +347,6 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 		return "", err
 	}
 	return tokenParams.AccessToken, nil
-}
-
-// More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
-func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
-	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
-	if !exists {
-		return
-	}
-
-	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-	if err != nil {
-		return
-	}
-
-	defer func() {
-		e := githubEnvFile.Close()
-		if err == nil {
-			err = e
-		}
-	}()
-
-	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, token.Token))
-	return
 }
 
 func ping() (*http.Response, error) {
