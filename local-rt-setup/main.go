@@ -33,7 +33,7 @@ const defaultVersion = "[RELEASE]"
 const tokenJson = "token.json"
 const generateTokenJson = "generate.token.json"
 const githubEnvFileEnv = "GITHUB_ENV"
-const jfrogLocalAccessToken = "JFROG_TEST_LOCAL_ACCESS_TOKEN"
+const jfrogLocalAccessToken = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
 
 func main() {
 	err := setupLocalArtifactory()
@@ -122,7 +122,7 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	if !artifactory6 {
+	if jfacToken != "" {
 		var adminToken string
 		adminToken, err = getAdminTokenUsingJfacToken(jfacToken)
 		if err != nil {
@@ -269,10 +269,6 @@ func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err err
 	if err != nil {
 		return
 	}
-	err = json.Unmarshal(tokenData, &token)
-	if err != nil {
-		return
-	}
 
 	jfacToken = token.Token
 	return
@@ -282,6 +278,7 @@ func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err err
 func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 	githubEnvPath, exists := os.LookupEnv(githubEnvFileEnv)
 	if !exists {
+		log.Printf("GITHUB_ENV not set, assuming the script is not running on Github. Skipping token export...")
 		return
 	}
 
@@ -341,7 +338,10 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed getting Admin Token from Artifactory. response: %d", resp.StatusCode)
 	}
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
 	err = json.Unmarshal(respBody, &tokenParams)
 	if err != nil {
 		return "", err
