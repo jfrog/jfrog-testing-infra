@@ -295,6 +295,10 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 	}()
 
 	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
+	if err != nil {
+		return
+	}
+	log.Printf("Successfuly exported Artifactory admin token to github_env...")
 	return
 }
 
@@ -305,10 +309,13 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 
 	type tokenInfo struct {
 		AccessToken string `json:"access_token,omitempty"`
+		Refreshable *bool  `json:"refreshable,omitempty"`
 		Audience    string `json:"audience,omitempty"`
 	}
+	trueValue := true
 	tokenParams := tokenInfo{
-		Audience: "*@*",
+		Audience:    "*@*",
+		Refreshable: &trueValue,
 	}
 
 	requestContent, err := json.Marshal(tokenParams)
