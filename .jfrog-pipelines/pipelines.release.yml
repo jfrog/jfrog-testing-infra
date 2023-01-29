@@ -36,6 +36,7 @@ pipelines:
         execution:
           onExecute:
             - cd $res_testingInfraReleaseGit_resourcePath
+            - ls -a
             - cd java
 
             # Set env
