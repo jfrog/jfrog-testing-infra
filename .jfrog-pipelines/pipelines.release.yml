@@ -75,7 +75,7 @@ pipelines:
             #- ./jf rt bp
 
             # Distribute release bundle
-            - ./jf ds rbc testing-infra $NEXT_VERSION --spec=./release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
+            - ./jf ds rbc testing-infra $NEXT_VERSION --spec=../release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
             - ./jf ds rbd testing-infra $NEXT_VERSION --site="releases.jfrog.io" --sync
 
             # Update next development version
