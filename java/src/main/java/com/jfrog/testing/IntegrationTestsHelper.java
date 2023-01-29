@@ -16,12 +16,11 @@ import org.jfrog.artifactory.client.impl.ArtifactoryRequestImpl;
 import org.jfrog.artifactory.client.model.LightweightRepository;
 import org.jfrog.artifactory.client.model.RepoPath;
 import org.jfrog.artifactory.client.model.RepositoryType;
-import org.jfrog.build.api.Artifact;
-import org.jfrog.build.api.Build;
-import org.jfrog.build.api.Dependency;
-import org.jfrog.build.api.Module;
 import org.jfrog.build.api.util.NullLog;
+import org.jfrog.build.extractor.ci.Artifact;
 import org.jfrog.build.extractor.ci.BuildInfo;
+import org.jfrog.build.extractor.ci.Dependency;
+import org.jfrog.build.extractor.ci.Module;
 import org.jfrog.build.extractor.clientConfiguration.client.artifactory.ArtifactoryManager;
 
 import java.io.IOException;
@@ -248,7 +247,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      *
      * @param buildInfo - Build-info object
      */
-    public void assertFilteredProperties(Build buildInfo) {
+    public void assertFilteredProperties(BuildInfo buildInfo) {
         Properties properties = buildInfo.getProperties();
         assertNotNull(properties);
         String[] unfiltered = properties.keySet().stream()
@@ -311,7 +310,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param moduleName - Module name
      * @return module from the build-info
      */
-    public Module getAndAssertModule(Build buildInfo, String moduleName) {
+    public Module getAndAssertModule(BuildInfo buildInfo, String moduleName) {
         assertNotNull(buildInfo);
         assertNotNull(buildInfo.getModules());
         Module module = buildInfo.getModule(moduleName);
@@ -325,7 +324,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param buildInfo  - Build info object
      * @param moduleName - Module name
      */
-    public void assertModuleContainsArtifactsAndDependencies(Build buildInfo, String moduleName) {
+    public void assertModuleContainsArtifactsAndDependencies(BuildInfo buildInfo, String moduleName) {
         Module module = getAndAssertModule(buildInfo, moduleName);
         assertTrue(CollectionUtils.isNotEmpty(module.getArtifacts()));
         assertTrue(CollectionUtils.isNotEmpty(module.getDependencies()));
@@ -337,7 +336,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param buildInfo  - Build info object
      * @param moduleName - Module name
      */
-    public void assertModuleContainsArtifacts(Build buildInfo, String moduleName) {
+    public void assertModuleContainsArtifacts(BuildInfo buildInfo, String moduleName) {
         Module module = getAndAssertModule(buildInfo, moduleName);
         assertTrue(CollectionUtils.isNotEmpty(module.getArtifacts()));
     }
