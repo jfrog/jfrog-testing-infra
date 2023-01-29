@@ -25,12 +25,15 @@ repositories {
 }
 
 dependencies {
-    implementation group: 'org.jfrog.buildinfo', name: 'build-info-api', version: '2.26.1'
-    implementation group: 'org.jfrog.buildinfo', name: 'build-info-extractor', version: '2.26.1'
-    implementation group: 'org.jfrog.artifactory.client', name: 'artifactory-java-client-services', version: '2.13.1'
+    implementation group: 'commons-io', name: 'commons-io', version: '2.11.0'
+    implementation group: 'junit', name: 'junit', version: '4.13.1'
     implementation group: 'org.apache.commons', name: 'commons-collections4', version: '4.4'
     implementation group: 'org.apache.commons', name: 'commons-text', version: '1.10.0'
-    implementation group: 'junit', name: 'junit', version: '4.13.1'
+    implementation group: 'org.apache.groovy', name: 'groovy', version: '4.0.8'
+    implementation group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.19.0'
+    implementation group: 'org.jfrog.artifactory.client', name: 'artifactory-java-client-services', version: '2.13.1'
+    implementation group: 'org.jfrog.buildinfo', name: 'build-info-api', version: '2.26.1'
+    implementation group: 'org.jfrog.buildinfo', name: 'build-info-extractor', version: '2.26.1'
 }
 
 java {

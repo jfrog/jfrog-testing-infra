@@ -14,7 +14,7 @@ To build the library sources, please follow these steps:
 
 ```
 cd java
-./gradlew clean publishToMavenLocal
+./gradlew clean compileJava publishToMavenLocal
 ```
 
 ## Code Contributions
