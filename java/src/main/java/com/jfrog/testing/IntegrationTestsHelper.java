@@ -21,7 +21,8 @@ import org.jfrog.build.api.Build;
 import org.jfrog.build.api.Dependency;
 import org.jfrog.build.api.Module;
 import org.jfrog.build.api.util.NullLog;
-import org.jfrog.build.extractor.clientConfiguration.client.ArtifactoryBuildInfoClient;
+import org.jfrog.build.extractor.ci.BuildInfo;
+import org.jfrog.build.extractor.clientConfiguration.client.artifactory.ArtifactoryManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,12 +65,12 @@ public class IntegrationTestsHelper implements AutoCloseable {
 
     private static final Pattern REPO_PATTERN = Pattern.compile("^jfrog-rt-tests(-\\w*)+-(\\d*)$");
 
-    private final ArtifactoryBuildInfoClient buildInfoClient;
+    private final ArtifactoryManager artifactoryManager;
     private final Artifactory artifactoryClient;
 
     public IntegrationTestsHelper() {
         verifyEnvironment();
-        buildInfoClient = new ArtifactoryBuildInfoClient(ARTIFACTORY_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD, new NullLog());
+        artifactoryManager = new ArtifactoryManager(ARTIFACTORY_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD, new NullLog());
         artifactoryClient = ArtifactoryClientBuilder.create()
                 .setUrl(ARTIFACTORY_URL)
                 .setUsername(ARTIFACTORY_USERNAME)
@@ -238,8 +239,8 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @return build info for the specified build name and number
      * @throws IOException if failed to get the build info.
      */
-    public Build getBuildInfo(String buildName, String buildNumber, String project) throws IOException {
-        return buildInfoClient.getBuildInfo(buildName, buildNumber, project);
+    public BuildInfo getBuildInfo(String buildName, String buildNumber, String project) throws IOException {
+        return artifactoryManager.getBuildInfo(buildName, buildNumber, project);
     }
 
     /**
@@ -361,8 +362,8 @@ public class IntegrationTestsHelper implements AutoCloseable {
 
     @Override
     public void close() {
-        if (buildInfoClient != null) {
-            buildInfoClient.close();
+        if (artifactoryManager != null) {
+            artifactoryManager.close();
         }
         if (artifactoryClient != null) {
             artifactoryClient.close();
