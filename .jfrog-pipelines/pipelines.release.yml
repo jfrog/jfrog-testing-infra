@@ -60,19 +60,19 @@ pipelines:
             - ./jf gradlec --use-wrapper --repo-resolve ecosys-maven-remote --repo-deploy ecosys-oss-release-local
 
             # Run audit
-            - ./jf audit --gradle
+            #- ./jf audit --gradle
 
             # Update version
-            - sed -i -e "/version=/ s/=.*/=$NEXT_VERSION/" gradle.properties
-            - git commit -am "[artifactory-release] Release version ${NEXT_VERSION} [skipRun]" --allow-empty
-            - git tag ${NEXT_VERSION}
-            - git push
-            - git push --tags
+            #- sed -i -e "/version=/ s/=.*/=$NEXT_VERSION/" gradle.properties
+            #- git commit -am "[artifactory-release] Release version ${NEXT_VERSION} [skipRun]" --allow-empty
+            #- git tag ${NEXT_VERSION}
+            #- git push
+            #- git push --tags
 
             # Run install and publish
             - ./jf gradle clean aP
-            - ./jf rt bag && ./jf rt bce
-            - ./jf rt bp
+            #- ./jf rt bag && ./jf rt bce
+            #- ./jf rt bp
 
             # Distribute release bundle
             - ./jf ds rbc testing-infra $NEXT_VERSION --spec=./release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
