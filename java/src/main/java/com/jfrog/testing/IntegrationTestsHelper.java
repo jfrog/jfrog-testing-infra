@@ -6,8 +6,8 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.text.StringSubstitutor;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jfrog.artifactory.client.Artifactory;
 import org.jfrog.artifactory.client.ArtifactoryClientBuilder;
 import org.jfrog.artifactory.client.ArtifactoryRequest;
@@ -16,12 +16,12 @@ import org.jfrog.artifactory.client.impl.ArtifactoryRequestImpl;
 import org.jfrog.artifactory.client.model.LightweightRepository;
 import org.jfrog.artifactory.client.model.RepoPath;
 import org.jfrog.artifactory.client.model.RepositoryType;
-import org.jfrog.build.api.Artifact;
-import org.jfrog.build.api.Build;
-import org.jfrog.build.api.Dependency;
-import org.jfrog.build.api.Module;
 import org.jfrog.build.api.util.NullLog;
-import org.jfrog.build.extractor.clientConfiguration.client.ArtifactoryBuildInfoClient;
+import org.jfrog.build.extractor.ci.Artifact;
+import org.jfrog.build.extractor.ci.BuildInfo;
+import org.jfrog.build.extractor.ci.Dependency;
+import org.jfrog.build.extractor.ci.Module;
+import org.jfrog.build.extractor.clientConfiguration.client.artifactory.ArtifactoryManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,12 +64,12 @@ public class IntegrationTestsHelper implements AutoCloseable {
 
     private static final Pattern REPO_PATTERN = Pattern.compile("^jfrog-rt-tests(-\\w*)+-(\\d*)$");
 
-    private final ArtifactoryBuildInfoClient buildInfoClient;
+    private final ArtifactoryManager artifactoryManager;
     private final Artifactory artifactoryClient;
 
     public IntegrationTestsHelper() {
         verifyEnvironment();
-        buildInfoClient = new ArtifactoryBuildInfoClient(ARTIFACTORY_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD, new NullLog());
+        artifactoryManager = new ArtifactoryManager(ARTIFACTORY_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD, new NullLog());
         artifactoryClient = ArtifactoryClientBuilder.create()
                 .setUrl(ARTIFACTORY_URL)
                 .setUsername(ARTIFACTORY_USERNAME)
@@ -238,8 +238,8 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @return build info for the specified build name and number
      * @throws IOException if failed to get the build info.
      */
-    public Build getBuildInfo(String buildName, String buildNumber, String project) throws IOException {
-        return buildInfoClient.getBuildInfo(buildName, buildNumber, project);
+    public BuildInfo getBuildInfo(String buildName, String buildNumber, String project) throws IOException {
+        return artifactoryManager.getBuildInfo(buildName, buildNumber, project);
     }
 
     /**
@@ -247,7 +247,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      *
      * @param buildInfo - Build-info object
      */
-    public void assertFilteredProperties(Build buildInfo) {
+    public void assertFilteredProperties(BuildInfo buildInfo) {
         Properties properties = buildInfo.getProperties();
         assertNotNull(properties);
         String[] unfiltered = properties.keySet().stream()
@@ -310,7 +310,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param moduleName - Module name
      * @return module from the build-info
      */
-    public Module getAndAssertModule(Build buildInfo, String moduleName) {
+    public Module getAndAssertModule(BuildInfo buildInfo, String moduleName) {
         assertNotNull(buildInfo);
         assertNotNull(buildInfo.getModules());
         Module module = buildInfo.getModule(moduleName);
@@ -324,7 +324,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param buildInfo  - Build info object
      * @param moduleName - Module name
      */
-    public void assertModuleContainsArtifactsAndDependencies(Build buildInfo, String moduleName) {
+    public void assertModuleContainsArtifactsAndDependencies(BuildInfo buildInfo, String moduleName) {
         Module module = getAndAssertModule(buildInfo, moduleName);
         assertTrue(CollectionUtils.isNotEmpty(module.getArtifacts()));
         assertTrue(CollectionUtils.isNotEmpty(module.getDependencies()));
@@ -336,7 +336,7 @@ public class IntegrationTestsHelper implements AutoCloseable {
      * @param buildInfo  - Build info object
      * @param moduleName - Module name
      */
-    public void assertModuleContainsArtifacts(Build buildInfo, String moduleName) {
+    public void assertModuleContainsArtifacts(BuildInfo buildInfo, String moduleName) {
         Module module = getAndAssertModule(buildInfo, moduleName);
         assertTrue(CollectionUtils.isNotEmpty(module.getArtifacts()));
     }
@@ -361,8 +361,8 @@ public class IntegrationTestsHelper implements AutoCloseable {
 
     @Override
     public void close() {
-        if (buildInfoClient != null) {
-            buildInfoClient.close();
+        if (artifactoryManager != null) {
+            artifactoryManager.close();
         }
         if (artifactoryClient != null) {
             artifactoryClient.close();

@@ -60,7 +60,7 @@ pipelines:
             - ./jf gradlec --use-wrapper --repo-resolve ecosys-maven-remote --repo-deploy ecosys-oss-release-local
 
             # Run audit
-            - ./jf ag
+            - ./jf audit --gradle
 
             # Update version
             - sed -i -e "/version=/ s/=.*/=$NEXT_VERSION/" gradle.properties
@@ -75,8 +75,8 @@ pipelines:
             - ./jf rt bp
 
             # Distribute release bundle
-            - ./jf ds rbc testing-infra $NEXT_VERSION --spec=./release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
-            - ./jf ds rbd testing-infra $NEXT_VERSION --site="releases.jfrog.io" --sync
+            - ./jf ds rbc ecosystem-testing-infra $NEXT_VERSION --spec=../release/specs/prod-rbc-filespec.json --spec-vars="version=$NEXT_VERSION" --sign
+            - ./jf ds rbd ecosystem-testing-infra $NEXT_VERSION --site="releases.jfrog.io" --sync
 
             # Update next development version
             - sed -i -e "/version=/ s/=.*/=$NEXT_DEVELOPMENT_VERSION/" gradle.properties
