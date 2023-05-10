@@ -106,7 +106,10 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	if !artifactory6 {
-		err = triggerTokenCreation(jfrogHome)
+		err = errors.Join(
+			triggerTokenCreation(jfrogHome),
+			enableReleaseBundles(),
+		)
 		if err != nil {
 			return err
 		}
@@ -577,4 +580,14 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 
 func getArchiveIndexEnabledAttribute(value bool) string {
 	return fmt.Sprintf("<archiveIndexEnabled>%v</archiveIndexEnabled>", value)
+}
+
+func enableReleaseBundles() error {
+	return errors.Join(
+		os.Setenv("JF_ARTIFACTORY_RELEASEBUNDLES_ENABLED", "true"),
+		os.Setenv("JF_ROUTER_DEV_MAKE_INTERNAL_PORTS_PUBLIC", "true"),
+		os.Setenv("JF_SHARED_FEATURETOGGLER_ACCESSENVIRONMENTS", "true"),
+		os.Setenv("JF_SHARED_FEATURETOGGLER_COMMONPROJECTS", "true"),
+		os.Setenv("JF_SHARED_FEATURETOGGLER_ARTIFACTORYRELEASEBUNDLEDISTRIBUTEFLOW", "true"),
+	)
 }
