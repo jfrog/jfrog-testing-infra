@@ -583,6 +583,7 @@ func getArchiveIndexEnabledAttribute(value bool) string {
 }
 
 func enableReleaseBundles() error {
+	log.Println("Enabling Release Bundles beta functionality...")
 	return errors.Join(
 		os.Setenv("JF_ARTIFACTORY_RELEASEBUNDLES_ENABLED", "true"),
 		os.Setenv("JF_ROUTER_DEV_MAKE_INTERNAL_PORTS_PUBLIC", "true"),
