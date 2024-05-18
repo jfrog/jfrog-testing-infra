@@ -21,19 +21,26 @@ import (
 	"github.com/mholt/archiver/v3"
 )
 
-const maxConnectionWaitSeconds = 300
-const waitSleepIntervalSeconds = 10
-const jfrogHomeEnv = "JFROG_HOME"
-const licenseEnv = "RTLIC"
-const localArtifactoryUrl = "http://localhost:8081/artifactory/"
-const localAccessUrl = "http://localhost:8081/access/"
-const defaultUsername = "admin"
-const defaultPassword = "password"
-const defaultVersion = "[RELEASE]"
-const tokenJson = "token.json"
-const generateTokenJson = "generate.token.json"
-const githubEnvFileEnv = "GITHUB_ENV"
-const jfrogLocalAccessToken = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
+const (
+	maxConnectionWaitSeconds = 300
+	waitSleepIntervalSeconds = 10
+	jfrogHomeEnv             = "JFROG_HOME"
+	licenseEnv               = "RTLIC"
+	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
+	localAccessUrl           = "http://localhost:8081/access/"
+	defaultUsername          = "admin"
+	defaultPassword          = "password"
+	defaultVersion           = "[RELEASE]"
+	tokenJson                = "token.json"
+	generateTokenJson        = "generate.token.json"
+	githubEnvFileEnv         = "GITHUB_ENV"
+	jfrogLocalAccessToken    = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
+)
+
+var (
+	artifactoryVarPath    = filepath.Join("artifactory", "var")
+	artifactoryVarEtcPath = filepath.Join(artifactoryVarPath, "etc")
+)
 
 func main() {
 	err := setupLocalArtifactory()
@@ -87,7 +94,7 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	if !artifactory6 && isMac() {
-		err = os.Chmod(filepath.Join(jfrogHome, "artifactory", "var"), os.ModePerm)
+		err = os.Chmod(filepath.Join(jfrogHome, artifactoryVarPath), os.ModePerm)
 		if err != nil {
 			return err
 		}
@@ -103,11 +110,7 @@ func setupLocalArtifactory() (err error) {
 		binDir = filepath.Join(jfrogHome, "artifactory", "bin")
 	} else {
 		binDir = filepath.Join(jfrogHome, "artifactory", "app", "bin")
-	}
-
-	if !artifactory6 {
-		err = triggerTokenCreation(jfrogHome)
-		if err != nil {
+		if err = handleArtifactory7(jfrogHome); err != nil {
 			return err
 		}
 	}
@@ -241,9 +244,38 @@ func waitForArtifactorySuccessfulPing(jfrogHome string, artifactory6 bool) (jfac
 	return
 }
 
+func handleArtifactory7(jfrogHome string) error {
+	if err := allowDerbyDb(jfrogHome); err != nil {
+		return err
+	}
+	if err := allowStagingMode(jfrogHome); err != nil {
+		return err
+	}
+	return triggerTokenCreation(jfrogHome)
+}
+
+// Since 7.84.7, new Artifactory installations support only PostgreSQL. This function allows using the Derby DB.
+func allowDerbyDb(jfrogHome string) error {
+	systemYamlTemplatePath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.basic-template.yaml")
+	systemYaml, err := os.ReadFile(systemYamlTemplatePath)
+	if err != nil {
+		return err
+	}
+
+	systemYaml = bytes.ReplaceAll(systemYaml, []byte("#allowNonPostgresql: false"), []byte("allowNonPostgresql: true"))
+	systemYamlPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.yaml")
+	return os.WriteFile(systemYamlPath, systemYaml, 0611)
+}
+
+// Allow using staging mode in Artifactory.
+func allowStagingMode(jfrogHome string) error {
+	systemPropertiesPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "artifactory", "artifactory.system.properties")
+	return os.WriteFile(systemPropertiesPath, []byte("staging.mode=true\n"), 0611)
+}
+
 // More info at - https://www.jfrog.com/confluence/display/JFROG/Managing+Keys#ManagingKeys-CreatinganAutomaticAdminToken
 func triggerTokenCreation(jfrogHome string) error {
-	generateKeysDir := filepath.Join(jfrogHome, "artifactory", "var", "bootstrap", "etc", "access", "keys")
+	generateKeysDir := filepath.Join(jfrogHome, artifactoryVarPath, "bootstrap", "etc", "access", "keys")
 	err := os.MkdirAll(generateKeysDir, os.ModePerm)
 	if err != nil {
 		return err
@@ -252,7 +284,7 @@ func triggerTokenCreation(jfrogHome string) error {
 }
 
 func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err error) {
-	generatedTokenPath := filepath.Join(jfrogHome, "artifactory", "var", "etc", "access", "keys", tokenJson)
+	generatedTokenPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "access", "keys", tokenJson)
 	exists, err := isExists(generatedTokenPath)
 	if err != nil || !exists {
 		return
@@ -497,7 +529,7 @@ func createLicenseFile(jfrogHome, license string, artifactory6 bool) (err error)
 	if artifactory6 {
 		fileDest = filepath.Join(jfrogHome, "artifactory", "etc", "artifactory.lic")
 	} else {
-		fileDest = filepath.Join(jfrogHome, "artifactory", "var", "etc", "artifactory", "artifactory.cluster.license")
+		fileDest = filepath.Join(jfrogHome, artifactoryVarEtcPath, "artifactory", "artifactory.cluster.license")
 	}
 	return os.WriteFile(fileDest, []byte(license), 0500)
 }
