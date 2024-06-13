@@ -32,7 +32,7 @@ pipelines:
             - name: testingInfraReleaseGit
           integrations:
             - name: il_automation
-            - name: entplus_deployer
+            - name: ecosys_entplus_deployer
         execution:
           onExecute:
             - cd $res_testingInfraReleaseGit_resourcePath/java
@@ -56,7 +56,7 @@ pipelines:
             # Configure JFrog CLI
             - curl -fL https://getcli.jfrog.io/v2-jf | sh && chmod +x jf
             - ./jf c rm --quiet
-            - ./jf c add internal --url=$int_entplus_deployer_url --user=$int_entplus_deployer_user --password=$int_entplus_deployer_apikey
+            - ./jf c add internal --url=$int_ecosys_entplus_deployer_url --user=$int_ecosys_entplus_deployer_user --password=$int_ecosys_entplus_deployer_apikey
             - ./jf gradlec --use-wrapper --repo-resolve ecosys-maven-remote --repo-deploy ecosys-oss-release-local
 
             # Run audit
