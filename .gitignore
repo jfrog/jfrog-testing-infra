@@ -1,8 +1,13 @@
 # Gradle
 .gradle
 
-# Idea
+# IDEs
+.vscode
 .idea
+*.iml
 
 # Build
 build
+
+# IOS
+*.DS_Store

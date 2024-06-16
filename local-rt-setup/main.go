@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/jfrog/archiver/v3"
 	"io"
 	"log"
 	"mime"
@@ -17,8 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/mholt/archiver/v3"
 )
 
 const (
