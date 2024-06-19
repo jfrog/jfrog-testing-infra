@@ -285,7 +285,11 @@ func triggerTokenCreation(jfrogHome string) error {
 func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err error) {
 	generatedTokenPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "access", "keys", tokenJson)
 	exists, err := isExists(generatedTokenPath)
-	if err != nil || !exists {
+	if err != nil {
+		return
+	}
+	if !exists {
+		log.Println(fmt.Sprintf("JFAC token file %q does not exist.", generatedTokenPath))
 		return
 	}
 
@@ -302,6 +306,11 @@ func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err err
 	}
 
 	jfacToken = token.Token
+	if jfacToken == "" {
+		return "", errors.New("JFAC token is empty")
+	}
+
+	log.Println("Successfully extracted JFAC token.")
 	return
 }
 
@@ -319,10 +328,7 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 	}
 
 	defer func() {
-		e := githubEnvFile.Close()
-		if err == nil {
-			err = e
-		}
+		err = errors.Join(err, githubEnvFile.Close())
 	}()
 
 	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
@@ -365,13 +371,7 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if e := resp.Body.Close(); e != nil {
-			if err == nil {
-				err = e
-			} else {
-				log.Println("error when closing body after getting Admin Token from Artifactory: " + e.Error())
-			}
-		}
+		err = errors.Join(err, resp.Body.Close())
 	}()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed getting Admin Token from Artifactory. response: %d", resp.StatusCode)
@@ -383,6 +383,9 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 	err = json.Unmarshal(respBody, &tokenParams)
 	if err != nil {
 		return "", err
+	}
+	if tokenParams.AccessToken == "" {
+		return "", errors.New("admin Access Token is empty")
 	}
 	return tokenParams.AccessToken, nil
 }
