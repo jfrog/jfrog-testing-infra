@@ -1,0 +1,3 @@
+token:
+  # Allow creating access tokens using basic authentication.
+  allow-basic-auth: true

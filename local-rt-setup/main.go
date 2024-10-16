@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/jfrog/archiver/v3"
 	"io"
 	"log"
 	"mime"
@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jfrog/archiver/v3"
 )
 
 const (
@@ -26,19 +28,27 @@ const (
 	jfrogHomeEnv             = "JFROG_HOME"
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
-	localAccessUrl           = "http://localhost:8081/access/"
-	defaultUsername          = "admin"
-	defaultPassword          = "password"
-	defaultVersion           = "[RELEASE]"
-	tokenJson                = "token.json"
-	generateTokenJson        = "generate.token.json"
-	githubEnvFileEnv         = "GITHUB_ENV"
-	jfrogLocalAccessToken    = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
+	// #nosec G101 -- False positive - no hardcoded credentials.
+	tokensApi         = "http://localhost:8082/access/api/v1/tokens"
+	defaultUsername   = "admin"
+	defaultPassword   = "password"
+	defaultVersion    = "[RELEASE]"
+	tokenJson         = "token.json"
+	generateTokenJson = "generate.token.json"
+	githubEnvFileEnv  = "GITHUB_ENV"
+	// #nosec G101 -- False positive - no hardcoded credentials
+	jfrogLocalAccessToken = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
 )
 
 var (
-	artifactoryVarPath    = filepath.Join("artifactory", "var")
-	artifactoryVarEtcPath = filepath.Join(artifactoryVarPath, "etc")
+	artifactoryVarPath          = filepath.Join("artifactory", "var")
+	artifactoryVarEtcPath       = filepath.Join(artifactoryVarPath, "etc")
+	artifactoryVarEtcAccessPath = filepath.Join(artifactoryVarEtcPath, "access")
+
+	//go:embed system.yaml
+	systemYaml string
+	//go:embed access.config.import.yml
+	accessConfig string
 )
 
 func main() {
@@ -119,19 +129,17 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	jfacToken, err := waitForArtifactorySuccessfulPing(jfrogHome, artifactory6)
+	err = waitForArtifactorySuccessfulPing()
 	if err != nil {
 		return err
 	}
 
-	if jfacToken != "" {
-		var adminToken string
-		adminToken, err = getAdminTokenUsingJfacToken(jfacToken)
+	if !artifactory6 {
+		adminToken, err := generateAccessToken()
 		if err != nil {
 			return err
 		}
-		err = exportTokenUsingGithubEnvFile(adminToken)
-		if err != nil {
+		if err = exportTokenUsingGithubEnvFile(adminToken); err != nil {
 			return err
 		}
 	}
@@ -210,108 +218,69 @@ func startArtifactory(binDir string) error {
 	return cmd.Run()
 }
 
-func waitForArtifactorySuccessfulPing(jfrogHome string, artifactory6 bool) (jfacToken string, err error) {
-	log.Println("Waiting for successful connection with Artifactory...")
+// The function will retry connecting to Artifactory every 10 seconds, for a maximum of 300 seconds.
+// If the connection is successful, the function will return the response body.
+// doRequest - the function to run in the retry loop.
+// successMessage - the message to print when the connection is successful.
+func runInRetryLoop(doRequest func() (*http.Response, error), successMessage string) (respBody []byte, err error) {
 	tryingLog := fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 
-		if !artifactory6 && jfacToken == "" {
-			jfacToken, err = extractGeneratedJfacTokenToken(jfrogHome)
-			if err != nil {
-				return
-			}
-		}
 		var response *http.Response
-		response, err = ping()
+		response, err = doRequest()
 		if err != nil {
 			log.Printf("Receieved error: %s. %s", err, tryingLog)
 		} else {
-			err = response.Body.Close()
+			respBody, err = io.ReadAll(response.Body)
 			if err != nil {
 				return
 			}
+			defer func() {
+				err = errors.Join(err, response.Body.Close())
+			}()
 			if response.StatusCode == http.StatusOK {
-				log.Println("Artifactory is up!")
+				log.Println(successMessage)
 				return
 			} else {
 				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
 			}
 		}
 	}
-	err = errors.New("could not connect to Artifactory")
+	err = errors.New("could not connect to Artifactory: " + err.Error())
+	return
+}
+
+func waitForArtifactorySuccessfulPing() (err error) {
+	log.Println("Waiting for successful connection with Artifactory...")
+	_, err = runInRetryLoop(ping, "Artifactory is up!")
 	return
 }
 
 func handleArtifactory7(jfrogHome string) error {
-	if err := allowDerbyDb(jfrogHome); err != nil {
+	if err := createSystemYaml(jfrogHome); err != nil {
 		return err
 	}
 	if err := allowStagingMode(jfrogHome); err != nil {
 		return err
 	}
-	return triggerTokenCreation(jfrogHome)
+	return createAccessConfig(jfrogHome)
 }
 
-// Since 7.84.7, new Artifactory installations support only PostgreSQL. This function allows using the Derby DB.
-func allowDerbyDb(jfrogHome string) error {
-	systemYamlTemplatePath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.basic-template.yaml")
-	systemYaml, err := os.ReadFile(systemYamlTemplatePath)
-	if err != nil {
-		return err
-	}
+// Create system.yaml file in the etc directory.
+func createSystemYaml(jfrogHome string) error {
+	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.yaml"), []byte(systemYaml), 0611)
+}
 
-	systemYaml = bytes.ReplaceAll(systemYaml, []byte("#allowNonPostgresql: false"), []byte("allowNonPostgresql: true"))
-	systemYamlPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.yaml")
-	return os.WriteFile(systemYamlPath, systemYaml, 0611)
+// Create access.config.import.yml file in the etc/access directory.
+func createAccessConfig(jfrogHome string) error {
+	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcAccessPath, "access.config.import.yml"), []byte(accessConfig), 0611)
 }
 
 // Allow using staging mode in Artifactory.
 func allowStagingMode(jfrogHome string) error {
 	systemPropertiesPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "artifactory", "artifactory.system.properties")
 	return os.WriteFile(systemPropertiesPath, []byte("staging.mode=true\n"), 0611)
-}
-
-// More info at - https://www.jfrog.com/confluence/display/JFROG/Managing+Keys#ManagingKeys-CreatinganAutomaticAdminToken
-func triggerTokenCreation(jfrogHome string) error {
-	generateKeysDir := filepath.Join(jfrogHome, artifactoryVarPath, "bootstrap", "etc", "access", "keys")
-	err := os.MkdirAll(generateKeysDir, os.ModePerm)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(generateKeysDir, generateTokenJson), []byte{}, 0600)
-}
-
-func extractGeneratedJfacTokenToken(jfrogHome string) (jfacToken string, err error) {
-	generatedTokenPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "access", "keys", tokenJson)
-	exists, err := isExists(generatedTokenPath)
-	if err != nil {
-		return
-	}
-	if !exists {
-		log.Println(fmt.Sprintf("JFAC token file %q does not exist.", generatedTokenPath))
-		return
-	}
-
-	tokenData, err := os.ReadFile(generatedTokenPath)
-	if err != nil {
-		return
-	}
-	var token struct {
-		Token string `json:"token"`
-	}
-	err = json.Unmarshal(tokenData, &token)
-	if err != nil {
-		return
-	}
-
-	jfacToken = token.Token
-	if jfacToken == "" {
-		return "", errors.New("JFAC token is empty")
-	}
-
-	log.Println("Successfully extracted JFAC token.")
-	return
 }
 
 // More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
@@ -339,49 +308,15 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 	return
 }
 
-// The token received from local artifactory is - ("aud": "jfac@*")
-// We use it to fetch an admin all token - ("aud": "*@*")
-func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
-	url := localAccessUrl + "api/v1/tokens"
-
-	type tokenInfo struct {
-		AccessToken string `json:"access_token,omitempty"`
-		Refreshable *bool  `json:"refreshable,omitempty"`
-		Audience    string `json:"audience,omitempty"`
-	}
-	trueValue := true
-	tokenParams := tokenInfo{
-		Audience:    "*@*",
-		Refreshable: &trueValue,
-	}
-
-	requestContent, err := json.Marshal(tokenParams)
-	if err != nil {
+func generateAccessToken() (accessToken string, err error) {
+	log.Println("Generating access token...")
+	var respBody []byte
+	if respBody, err = runInRetryLoop(doGenerateAccessToken, "Successfully generated an access token!"); err != nil {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestContent))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+jfacToken)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		err = errors.Join(err, resp.Body.Close())
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed getting Admin Token from Artifactory. response: %d", resp.StatusCode)
-	}
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	err = json.Unmarshal(respBody, &tokenParams)
-	if err != nil {
+	var tokenParams tokenInfo
+	if err = json.Unmarshal(respBody, &tokenParams); err != nil {
 		return "", err
 	}
 	if tokenParams.AccessToken == "" {
@@ -390,10 +325,26 @@ func getAdminTokenUsingJfacToken(jfacToken string) (string, error) {
 	return tokenParams.AccessToken, nil
 }
 
+func doGenerateAccessToken() (*http.Response, error) {
+	requestContent, err := json.Marshal(tokenInfo{Audience: "*@*"})
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, tokensApi, bytes.NewBuffer(requestContent))
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(defaultUsername, defaultPassword)
+	req.Header.Set("Content-Type", "application/json")
+
+	return http.DefaultClient.Do(req)
+}
+
 func ping() (*http.Response, error) {
 	url := localArtifactoryUrl + "api/system/ping"
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -406,7 +357,7 @@ func setCustomUrlBase() error {
 	log.Println("Setting custom URL base...")
 
 	url := localArtifactoryUrl + "api/system/configuration/baseUrl"
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(localArtifactoryUrl)))
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer([]byte(localArtifactoryUrl)))
 	if err != nil {
 		return err
 	}
@@ -461,7 +412,7 @@ func downloadArtifactory(downloadDest, rtVersion string, artifactory6 bool) (pat
 
 	log.Println("Downloading Artifactory from URL: " + url)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed creating new request: %s", err)
 	}
@@ -557,7 +508,7 @@ func isWindows() bool {
 
 func enableArchiveIndex() error {
 	log.Println("Enabling archive index...")
-	confStr, err := handleConfiguration("GET", nil)
+	confStr, err := handleConfiguration(http.MethodGet, nil)
 	if err != nil {
 		return err
 	}
@@ -565,10 +516,10 @@ func enableArchiveIndex() error {
 	if !strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
 		return errors.New("failed setting the archive index property - attribute does not exist in configuration")
 	}
-	confStr = strings.Replace(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true), -1)
+	confStr = strings.ReplaceAll(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true))
 
 	// Post new configuration
-	_, err = handleConfiguration("POST", strings.NewReader(confStr))
+	_, err = handleConfiguration(http.MethodPost, strings.NewReader(confStr))
 	return err
 }
 
@@ -611,4 +562,9 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 
 func getArchiveIndexEnabledAttribute(value bool) string {
 	return fmt.Sprintf("<archiveIndexEnabled>%v</archiveIndexEnabled>", value)
+}
+
+type tokenInfo struct {
+	AccessToken string `json:"access_token,omitempty"`
+	Audience    string `json:"audience,omitempty"`
 }
