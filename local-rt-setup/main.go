@@ -52,8 +52,7 @@ var (
 )
 
 func main() {
-	err := setupLocalArtifactory()
-	if err != nil {
+	if err := setupLocalArtifactory(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -92,25 +91,21 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	err = extract(pathToArchive, jfrogHome)
-	if err != nil {
+	if err = extract(pathToArchive, jfrogHome); err != nil {
 		return err
 	}
 
-	err = renameArtifactoryDir(jfrogHome)
-	if err != nil {
+	if err = renameArtifactoryDir(jfrogHome); err != nil {
 		return err
 	}
 
 	if !artifactory6 && isMac() {
-		err = os.Chmod(filepath.Join(jfrogHome, artifactoryVarPath), os.ModePerm)
-		if err != nil {
+		if err = os.Chmod(filepath.Join(jfrogHome, artifactoryVarPath), os.ModePerm); err != nil {
 			return err
 		}
 	}
 
-	err = createLicenseFile(jfrogHome, license, artifactory6)
-	if err != nil {
+	if err = createLicenseFile(jfrogHome, license, artifactory6); err != nil {
 		return err
 	}
 
@@ -124,13 +119,11 @@ func setupLocalArtifactory() (err error) {
 		}
 	}
 
-	err = startArtifactory(binDir)
-	if err != nil {
+	if err = startArtifactory(binDir); err != nil {
 		return err
 	}
 
-	err = waitForArtifactorySuccessfulPing()
-	if err != nil {
+	if err = waitForArtifactorySuccessfulPing(); err != nil {
 		return err
 	}
 
@@ -144,8 +137,7 @@ func setupLocalArtifactory() (err error) {
 		}
 	}
 
-	err = setCustomUrlBase()
-	if err != nil || artifactory6 {
+	if err = setCustomUrlBase(); err != nil || artifactory6 {
 		return err
 	}
 
@@ -195,8 +187,7 @@ func prepareJFrogHome() (string, error) {
 	}
 
 	// If jfrog_home/artifactory directory already exists, return error
-	exists, err = isExists(filepath.Join(jfrogHome, "artifactory"))
-	if err != nil {
+	if exists, err = isExists(filepath.Join(jfrogHome, "artifactory")); err != nil {
 		return "", err
 	}
 	if exists {
@@ -228,8 +219,7 @@ func runInRetryLoop(doRequest func() (*http.Response, error), successMessage str
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 
 		var response *http.Response
-		response, err = doRequest()
-		if err != nil {
+		if response, err = doRequest(); err != nil {
 			log.Printf("Receieved error: %s. %s", err, tryingLog)
 		} else {
 			respBody, err = io.ReadAll(response.Body)
@@ -300,8 +290,7 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 		err = errors.Join(err, githubEnvFile.Close())
 	}()
 
-	_, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken))
-	if err != nil {
+	if _, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken)); err != nil {
 		return
 	}
 	log.Printf("Successfuly exported Artifactory admin token to github_env...")
@@ -366,8 +355,7 @@ func setCustomUrlBase() error {
 	if err != nil {
 		return err
 	}
-	err = resp.Body.Close()
-	if err != nil {
+	if err = resp.Body.Close(); err != nil {
 		return err
 	}
 
@@ -377,12 +365,10 @@ func setCustomUrlBase() error {
 	}
 
 	// Verify connection after setting custom url.
-	resp, err = ping()
-	if err != nil {
+	if resp, err = ping(); err != nil {
 		return err
 	}
-	err = resp.Body.Close()
-	if err != nil {
+	if err = resp.Body.Close(); err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
