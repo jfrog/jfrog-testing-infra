@@ -11,3 +11,6 @@ build
 
 # IOS
 *.DS_Store
+
+# Local RT setup binary
+/local-rt-setup/local-rt-setup

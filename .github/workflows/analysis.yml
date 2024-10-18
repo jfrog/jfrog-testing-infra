@@ -1,0 +1,40 @@
+name: "Static Analysis"
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+  pull_request:
+jobs:
+  Static-Check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          # Checkout only the local-rt-setup directory
+          sparse-checkout: local-rt-setup
+          sparse-checkout-cone-mode: false
+      
+      # Move the files from the local-rt-setup directory to the root directory to run the linter on the right directory
+      - run: mv local-rt-setup/* .
+        
+      - name: Run golangci linter
+        uses: jfrog/.github/actions/golangci-lint@main
+
+  Go-Sec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          # Checkout only the local-rt-setup directory
+          sparse-checkout: local-rt-setup
+          sparse-checkout-cone-mode: false
+
+      # Move the files from the local-rt-setup directory to the root directory to run the linter on the right directory
+      - run: mv local-rt-setup/* .
+
+      - name: Run Go-Sec scanner
+        uses: jfrog/.github/actions/gosec-scanner@main
