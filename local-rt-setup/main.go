@@ -39,6 +39,7 @@ const (
 var (
 	artifactoryVarPath    = filepath.Join("artifactory", "var")
 	artifactoryVarEtcPath = filepath.Join(artifactoryVarPath, "etc")
+	artifactoryAppBinPath = filepath.Join("artifactory", "app", "bin")
 )
 
 func main() {
@@ -97,6 +98,9 @@ func setupLocalArtifactory() (err error) {
 		if err != nil {
 			return err
 		}
+		if err = fixBash3Compatibility(jfrogHome); err != nil {
+			return err
+		}
 	}
 
 	err = createLicenseFile(jfrogHome, license, artifactory6)
@@ -142,6 +146,23 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	return enableArchiveIndex()
+}
+
+// Fix the bash 3 compatibility issue by removing the ,, from the artifactoryCommon.sh file.
+func fixBash3Compatibility(jfrogHome string) error {
+	artifactoryCommonPath := filepath.Join(jfrogHome, artifactoryAppBinPath, "artifactoryCommon.sh")
+
+	// Read artifactoryCommon.sh file
+	content, err := os.ReadFile(artifactoryCommonPath)
+	if err != nil {
+		return err
+	}
+
+	// Replace ,, with an empty string
+	updatedContent := bytes.ReplaceAll(content, []byte(",,"), []byte{})
+
+	// Write artifactoryCommon.sh without the ,,
+	return os.WriteFile(artifactoryCommonPath, updatedContent, 0755)
 }
 
 // Rename the directory that was extracted from the archive, to easily access in the rest of the script.
