@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	maxConnectionWaitSeconds = 600
-	waitSleepIntervalSeconds = 10
+	maxConnectionWaitSeconds = 700
+	waitSleepIntervalSeconds = 15
 	jfrogHomeEnv             = "JFROG_HOME"
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
