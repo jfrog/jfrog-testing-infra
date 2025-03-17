@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	maxConnectionWaitSeconds = 700
+	maxConnectionWaitSeconds = 900
 	waitSleepIntervalSeconds = 15
 	jfrogHomeEnv             = "JFROG_HOME"
 	licenseEnv               = "RTLIC"
@@ -258,7 +258,7 @@ func runInRetryLoop(doRequest func() (*http.Response, error), successMessage str
 			}
 		}
 	}
-	err = fmt.Errorf("could not connect to Artifactory: %w", err)
+	err = errors.Join(err, fmt.Errorf("could not connect to Artifactory, reached timeout of %d seconds", maxConnectionWaitSeconds))
 	return
 }
 
