@@ -29,13 +29,10 @@ const (
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
 	// #nosec G101 -- False positive - no hardcoded credentials.
-	tokensApi       = "http://localhost:8082/access/api/v1/tokens"
-	defaultUsername = "admin"
-	defaultPassword = "password"
-	// defaultVersion    = "[RELEASE]"
-	// This is a temp patch as the latest release version of artifactory needs extra configuration before it could work.
-	// For more info: https://github.com/jfrog/jfrog-testing-infra/pull/27
-	defaultVersion    = "7.104.15"
+	tokensApi         = "http://localhost:8082/access/api/v1/tokens"
+	defaultUsername   = "admin"
+	defaultPassword   = "password"
+	defaultVersion    = "[RELEASE]"
 	tokenJson         = "token.json"
 	generateTokenJson = "generate.token.json"
 	githubEnvFileEnv  = "GITHUB_ENV"
