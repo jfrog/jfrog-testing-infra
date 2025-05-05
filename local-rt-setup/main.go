@@ -29,13 +29,10 @@ const (
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
 	// #nosec G101 -- False positive - no hardcoded credentials.
-	tokensApi       = "http://localhost:8082/access/api/v1/tokens"
-	defaultUsername = "admin"
-	defaultPassword = "password"
-	// defaultVersion    = "[RELEASE]"
-	// This is a temp patch as the latest release version of artifactory needs extra configuration before it could work.
-	// For more info: https://github.com/jfrog/jfrog-testing-infra/pull/27
-	defaultVersion    = "7.104.15"
+	tokensApi         = "http://localhost:8082/access/api/v1/tokens"
+	defaultUsername   = "admin"
+	defaultPassword   = "password"
+	defaultVersion    = "[RELEASE]"
 	tokenJson         = "token.json"
 	generateTokenJson = "generate.token.json"
 	githubEnvFileEnv  = "GITHUB_ENV"
@@ -523,10 +520,11 @@ func enableArchiveIndex() error {
 		return err
 	}
 
-	if !strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
-		return errors.New("failed setting the archive index property - attribute does not exist in configuration")
+	// <archiveIndexEnabled> property is removed from default application configuration since 7.111.4
+	if strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
+		log.Println("Found archive index enabled attribute, updating to true")
+		confStr = strings.ReplaceAll(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true))
 	}
-	confStr = strings.ReplaceAll(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true))
 
 	// Post new configuration
 	_, err = handleConfiguration(http.MethodPost, strings.NewReader(confStr))
