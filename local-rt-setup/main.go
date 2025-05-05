@@ -34,6 +34,7 @@ const (
 	defaultPassword = "password"
 	// defaultVersion    = "[RELEASE]"
 	// This is a temp patch as the latest release version of artifactory needs extra configuration before it could work.
+	// For more info: https://github.com/jfrog/jfrog-testing-infra/pull/27
 	defaultVersion    = "7.104.15"
 	tokenJson         = "token.json"
 	generateTokenJson = "generate.token.json"
