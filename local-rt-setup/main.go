@@ -523,10 +523,11 @@ func enableArchiveIndex() error {
 		return err
 	}
 
-	if !strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
-		return errors.New("failed setting the archive index property - attribute does not exist in configuration")
+	// <archiveIndexEnabled> property is removed from default application configuration since 7.111.4
+	if strings.Contains(confStr, getArchiveIndexEnabledAttribute(false)) {
+		log.Println("Found archive index enabled attribute, updating to true")
+		confStr = strings.ReplaceAll(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true))
 	}
-	confStr = strings.ReplaceAll(confStr, getArchiveIndexEnabledAttribute(false), getArchiveIndexEnabledAttribute(true))
 
 	// Post new configuration
 	_, err = handleConfiguration(http.MethodPost, strings.NewReader(confStr))
