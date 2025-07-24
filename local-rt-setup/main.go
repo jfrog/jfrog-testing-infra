@@ -162,7 +162,7 @@ func fixBash3Compatibility(jfrogHome string) error {
 	updatedContent := bytes.ReplaceAll(content, []byte(",,"), []byte{})
 
 	// Write artifactoryCommon.sh without the ,,
-	return os.WriteFile(artifactoryCommonPath, updatedContent, 0755)
+	return os.WriteFile(artifactoryCommonPath, updatedContent, 0o755)
 }
 
 // Rename the directory that was extracted from the archive, to easily access in the rest of the script.
@@ -247,9 +247,7 @@ func runInRetryLoop(doRequest func() (*http.Response, error), successMessage str
 			if err != nil {
 				return
 			}
-			defer func() {
-				err = errors.Join(err, response.Body.Close())
-			}()
+			closeQuietly(response.Body, "error when closing response body after reading")
 			if response.StatusCode == http.StatusOK {
 				log.Println(successMessage)
 				return
@@ -280,18 +278,18 @@ func handleArtifactory7(jfrogHome string) error {
 
 // Create system.yaml file in the etc directory.
 func createSystemYaml(jfrogHome string) error {
-	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.yaml"), []byte(systemYaml), 0611)
+	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcPath, "system.yaml"), []byte(systemYaml), 0o611)
 }
 
 // Create access.config.import.yml file in the etc/access directory.
 func createAccessConfig(jfrogHome string) error {
-	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcAccessPath, "access.config.import.yml"), []byte(accessConfig), 0611)
+	return os.WriteFile(filepath.Join(jfrogHome, artifactoryVarEtcAccessPath, "access.config.import.yml"), []byte(accessConfig), 0o611)
 }
 
 // Allow using staging mode in Artifactory.
 func allowStagingMode(jfrogHome string) error {
 	systemPropertiesPath := filepath.Join(jfrogHome, artifactoryVarEtcPath, "artifactory", "artifactory.system.properties")
-	return os.WriteFile(systemPropertiesPath, []byte("staging.mode=true\n"), 0611)
+	return os.WriteFile(systemPropertiesPath, []byte("staging.mode=true\n"), 0o611)
 }
 
 // More info at: https://docs.github.com/en/github-ae@latest/actions/using-workflows/workflow-commands-for-github-actions#environment-files
@@ -302,14 +300,12 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 		return
 	}
 
-	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	githubEnvFile, err := os.OpenFile(githubEnvPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return
 	}
 
-	defer func() {
-		err = errors.Join(err, githubEnvFile.Close())
-	}()
+	defer closeQuietly(githubEnvFile, "error when closing github env file")
 
 	if _, err = githubEnvFile.WriteString(fmt.Sprintf("%s=%s\n", jfrogLocalAccessToken, adminToken)); err != nil {
 		return
@@ -376,9 +372,7 @@ func setCustomUrlBase() error {
 	if err != nil {
 		return err
 	}
-	if err = resp.Body.Close(); err != nil {
-		return err
-	}
+	closeQuietly(resp.Body, "error when closing body after setting custom url base")
 
 	// Artifactory might return 500 because the url has allegedly changed.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
@@ -389,9 +383,7 @@ func setCustomUrlBase() error {
 	if resp, err = ping(); err != nil {
 		return err
 	}
-	if err = resp.Body.Close(); err != nil {
-		return err
-	}
+	closeQuietly(resp.Body, "error when closing body after ping")
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed reaching to Artifactory after setting custom url base. response: %d", resp.StatusCode)
 	}
@@ -427,15 +419,7 @@ func downloadArtifactory(downloadDest, rtVersion string, artifactory6 bool) (pat
 	if err != nil {
 		return "", fmt.Errorf("failed getting archive: %s", err)
 	}
-	defer func() {
-		if e := resp.Body.Close(); e != nil {
-			if err == nil {
-				err = e
-			} else {
-				log.Println("error when closing body after download: " + e.Error())
-			}
-		}
-	}()
+	defer closeQuietly(resp.Body, "error when closing body after download")
 
 	if resp.StatusCode != http.StatusOK {
 		return "", errors.New("failed downloading Artifactory. Releases response: " + resp.Status)
@@ -454,15 +438,7 @@ func downloadArtifactory(downloadDest, rtVersion string, artifactory6 bool) (pat
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if e := file.Close(); e != nil {
-			if err == nil {
-				err = e
-			} else {
-				log.Println("error when closing archive file: " + e.Error())
-			}
-		}
-	}()
+	defer closeQuietly(file, "error when closing archive file")
 	_, err = io.Copy(file, resp.Body)
 	return pathToArchive, err
 }
@@ -491,7 +467,7 @@ func createLicenseFile(jfrogHome, license string, artifactory6 bool) (err error)
 	} else {
 		fileDest = filepath.Join(jfrogHome, artifactoryVarEtcPath, "artifactory", "artifactory.cluster.license")
 	}
-	return os.WriteFile(fileDest, []byte(license), 0500)
+	return os.WriteFile(fileDest, []byte(license), 0o500)
 }
 
 func isExists(path string) (bool, error) {
@@ -544,15 +520,9 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() {
-		if e := resp.Body.Close(); e != nil {
-			if err == nil {
-				err = e
-			} else {
-				log.Println("error when closing body after download: " + e.Error())
-			}
-		}
-	}()
+
+	defer closeQuietly(resp.Body, "error when closing body after download")
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed %sing Artifactory configuration. response: %d", method, resp.StatusCode)
 	}
@@ -570,6 +540,12 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 
 func getArchiveIndexEnabledAttribute(value bool) string {
 	return fmt.Sprintf("<archiveIndexEnabled>%v</archiveIndexEnabled>", value)
+}
+
+func closeQuietly(closer io.Closer, message string) {
+	if err := closer.Close(); err != nil {
+		log.Println(message, err)
+	}
 }
 
 type tokenInfo struct {
