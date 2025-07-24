@@ -124,6 +124,7 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	if err = startArtifactory(binDir); err != nil {
+		dumpLogs(jfrogHome)
 		return err
 	}
 
@@ -546,6 +547,35 @@ func closeQuietly(closer io.Closer, message string) {
 	if err := closer.Close(); err != nil {
 		log.Println(message, err)
 	}
+}
+
+func dumpLogFile(jfrogHome, fileName string) {
+	log.Printf("\n\n=========== %s ===========\n", fileName)
+	logFilePath := filepath.Join(jfrogHome, artifactoryVarPath, "log", fileName)
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
+		log.Printf("Log file %s does not exist. Skipping dump.", logFilePath)
+		return
+	}
+
+	logFile, err := os.OpenFile(logFilePath, os.O_RDONLY, 0o644)
+	if err != nil {
+		log.Printf("Error opening log file %s: %v", logFilePath, err)
+		return
+	}
+
+	defer closeQuietly(logFile, "error when closing log file")
+
+	_, err = io.Copy(os.Stdout, logFile)
+	if err != nil {
+		log.Printf("Error reading log file %s: %v", logFilePath, err)
+		return
+	}
+}
+
+func dumpLogs(jfrogHome string) {
+	dumpLogFile(jfrogHome, "artifactory-service.log")
+	dumpLogFile(jfrogHome, "access-service.log")
+	dumpLogFile(jfrogHome, "router-service.log")
 }
 
 type tokenInfo struct {
