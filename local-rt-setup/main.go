@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 const (
 	maxConnectionWaitSeconds = 900
 	waitSleepIntervalSeconds = 15
+	requestTimeout           = 30 * time.Second
 	jfrogHomeEnv             = "JFROG_HOME"
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
@@ -45,6 +47,7 @@ var (
 	artifactoryVarEtcPath       = filepath.Join(artifactoryVarPath, "etc")
 	artifactoryVarEtcAccessPath = filepath.Join(artifactoryVarEtcPath, "access")
 	artifactoryAppBinPath       = filepath.Join("artifactory", "app", "bin")
+	tryingLog                   = fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
 
 	//go:embed system.yaml
 	systemYaml string
@@ -135,6 +138,7 @@ func setupLocalArtifactory() (err error) {
 	if !artifactory6 {
 		adminToken, err := generateAccessToken()
 		if err != nil {
+			dumpLogs(jfrogHome)
 			return err
 		}
 		if err = exportTokenUsingGithubEnvFile(adminToken); err != nil {
@@ -235,35 +239,64 @@ func startArtifactory(binDir string) error {
 // If the connection is successful, the function will return the response body.
 // doRequest - the function to run in the retry loop.
 // successMessage - the message to print when the connection is successful.
-func runInRetryLoop(doRequest func() (*http.Response, error), successMessage string) (respBody []byte, err error) {
-	tryingLog := fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
+// extractOutputData - if true, the response body will be processed and returned.
+func runInRetryLoop(doRequest func(ctx context.Context) (*http.Response, error), successMessage string, extractOutputData bool) (respBody []byte, err error) {
 	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
-		time.Sleep(time.Second * waitSleepIntervalSeconds)
-
-		var response *http.Response
-		if response, err = doRequest(); err != nil {
-			log.Printf("Receieved error: %s. %s", err, tryingLog)
-		} else {
-			respBody, err = io.ReadAll(response.Body)
-			if err != nil {
-				return
-			}
-			closeQuietly(response.Body, "error when closing response body after reading")
-			if response.StatusCode == http.StatusOK {
-				log.Println(successMessage)
-				return
-			} else {
-				log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
-			}
+		respBody, err, stop := tryRequest(doRequest, extractOutputData)
+		if stop {
+			log.Println(successMessage)
+			return respBody, err
 		}
+		time.Sleep(time.Second * waitSleepIntervalSeconds)
 	}
 	err = errors.Join(err, fmt.Errorf("could not connect to Artifactory, reached timeout of %d seconds", maxConnectionWaitSeconds))
 	return
 }
 
+func tryRequest(doRequest func(ctx context.Context) (*http.Response, error), extractOutputData bool) (respData []byte, err error, stop bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+
+	var response *http.Response
+	if response, err = doRequest(ctx); err != nil {
+		log.Printf("Received error: %s. %s", err, tryingLog)
+	} else {
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			respData, err = processResponseOutput(response, extractOutputData)
+			stop = true
+		} else {
+			_, _ = processResponseOutput(response, false) // Discard the response body
+		}
+		if !stop {
+			log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
+		}
+	}
+
+	return
+}
+
+func processResponseOutput(resp *http.Response, processOutput bool) (output []byte, err error) {
+	if resp == nil {
+		return nil, errors.New("response is nil")
+	}
+
+	defer closeQuietly(resp.Body, "error when closing response body after reading")
+
+	if processOutput {
+		output, err = io.ReadAll(resp.Body)
+		if err != nil {
+			err = fmt.Errorf("error reading response body: %w", err)
+		}
+	} else {
+		_, _ = io.Copy(io.Discard, resp.Body)
+	}
+
+	return
+}
+
 func waitForArtifactorySuccessfulPing() (err error) {
 	log.Println("Waiting for successful connection with Artifactory...")
-	_, err = runInRetryLoop(ping, "Artifactory is up!")
+	_, err = runInRetryLoop(ping, "Artifactory is up!", false)
 	return
 }
 
@@ -318,7 +351,7 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 func generateAccessToken() (accessToken string, err error) {
 	log.Println("Generating access token...")
 	var respBody []byte
-	if respBody, err = runInRetryLoop(doGenerateAccessToken, "Successfully generated an access token!"); err != nil {
+	if respBody, err = runInRetryLoop(doGenerateAccessToken, "Successfully generated an access token!", true); err != nil {
 		return "", err
 	}
 
@@ -332,13 +365,13 @@ func generateAccessToken() (accessToken string, err error) {
 	return tokenParams.AccessToken, nil
 }
 
-func doGenerateAccessToken() (*http.Response, error) {
+func doGenerateAccessToken(ctx context.Context) (*http.Response, error) {
 	requestContent, err := json.Marshal(tokenInfo{Audience: "*@*"})
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, tokensApi, bytes.NewBuffer(requestContent))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokensApi, bytes.NewBuffer(requestContent))
 	if err != nil {
 		return nil, err
 	}
@@ -348,10 +381,10 @@ func doGenerateAccessToken() (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 
-func ping() (*http.Response, error) {
+func ping(ctx context.Context) (*http.Response, error) {
 	url := localArtifactoryUrl + "api/system/ping"
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -381,10 +414,14 @@ func setCustomUrlBase() error {
 	}
 
 	// Verify connection after setting custom url.
-	if resp, err = ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	if resp, err = ping(pingCtx); err != nil {
 		return err
 	}
+
 	closeQuietly(resp.Body, "error when closing body after ping")
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed reaching to Artifactory after setting custom url base. response: %d", resp.StatusCode)
 	}
