@@ -1,6 +1,9 @@
 configVersion: 1
 
 shared:
+  security:
+    joinKey: b7aafb2b445c5f75dcfc853aee18b476
+    masterKey: 17a0e0f8043e3eb09f6b78b58fc99717ea06bacf4a3765ec0d40e5e07bbee3bd
   database:
     # Since 7.84.7, new Artifactory installations support only PostgreSQL. This option allows using the Derby DB.
     allowNonPostgresql: true
