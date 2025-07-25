@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
@@ -48,6 +49,7 @@ var (
 	artifactoryVarEtcAccessPath = filepath.Join(artifactoryVarEtcPath, "access")
 	artifactoryAppBinPath       = filepath.Join("artifactory", "app", "bin")
 	tryingLog                   = fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
+	dumpLogBuffer               = make([]byte, 64*1024) // 64KB buffer for log dumping
 
 	//go:embed system.yaml
 	systemYaml string
@@ -602,7 +604,12 @@ func dumpLogFile(jfrogHome, fileName string) {
 
 	defer closeQuietly(logFile, "error when closing log file")
 
-	_, err = io.Copy(os.Stdout, logFile)
+	out := bufio.NewWriter(os.Stdout)
+	defer func() {
+		_ = out.Flush()
+	}()
+
+	_, err = io.CopyBuffer(out, logFile, dumpLogBuffer)
 	if err != nil {
 		log.Printf("Error reading log file %s: %v", logFilePath, err)
 		return
