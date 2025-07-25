@@ -50,6 +50,16 @@ var (
 	artifactoryAppBinPath       = filepath.Join("artifactory", "app", "bin")
 	tryingLog                   = fmt.Sprintf("Trying again in %d seconds.", waitSleepIntervalSeconds)
 	dumpLogBuffer               = make([]byte, 64*1024) // 64KB buffer for log dumping
+	dumpServiceLogs             = []string{
+		"artifactory-service.log",
+		"access-service.log",
+		"router-service.log",
+		"event-service.log",
+		"metadata-service.log",
+		"observability-service.log",
+		"jfconfig-service.log",
+		"jfconnect-service.log",
+	}
 
 	//go:embed system.yaml
 	systemYaml string
@@ -277,14 +287,14 @@ func tryRequest(doRequest func(ctx context.Context) (*http.Response, error), ext
 	return
 }
 
-func processResponseOutput(resp *http.Response, processOutput bool) (output []byte, err error) {
+func processResponseOutput(resp *http.Response, needContent bool) (output []byte, err error) {
 	if resp == nil {
 		return nil, errors.New("response is nil")
 	}
 
 	defer closeQuietly(resp.Body, "error when closing response body after reading")
 
-	if processOutput {
+	if needContent {
 		output, err = io.ReadAll(resp.Body)
 		if err != nil {
 			err = fmt.Errorf("error reading response body: %w", err)
@@ -561,21 +571,17 @@ func handleConfiguration(method string, body io.Reader) (string, error) {
 		return "", err
 	}
 
-	defer closeQuietly(resp.Body, "error when closing body after download")
-
 	if resp.StatusCode != http.StatusOK {
+		_, _ = processResponseOutput(resp, false) // Discard the response body
 		return "", fmt.Errorf("failed %sing Artifactory configuration. response: %d", method, resp.StatusCode)
 	}
 
-	buf := new(strings.Builder)
-	n, err := io.Copy(buf, resp.Body)
+	resData, err := processResponseOutput(resp, true)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error reading response body: %w", err)
 	}
-	if n == 0 {
-		return "", errors.New("failed reading response body")
-	}
-	return buf.String(), nil
+
+	return string(resData), nil
 }
 
 func getArchiveIndexEnabledAttribute(value bool) string {
@@ -589,7 +595,13 @@ func closeQuietly(closer io.Closer, message string) {
 }
 
 func dumpLogFile(jfrogHome, fileName string) {
-	log.Printf("\n\n=========== %s ===========\n", fileName)
+	out := bufio.NewWriter(os.Stdout)
+	defer func() {
+		_ = out.Flush()
+	}()
+
+	_, _ = out.WriteString("\n\n=========== " + fileName + " ===========\n")
+
 	logFilePath := filepath.Join(jfrogHome, artifactoryVarPath, "log", fileName)
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		log.Printf("Log file %s does not exist. Skipping dump.", logFilePath)
@@ -604,11 +616,6 @@ func dumpLogFile(jfrogHome, fileName string) {
 
 	defer closeQuietly(logFile, "error when closing log file")
 
-	out := bufio.NewWriter(os.Stdout)
-	defer func() {
-		_ = out.Flush()
-	}()
-
 	_, err = io.CopyBuffer(out, logFile, dumpLogBuffer)
 	if err != nil {
 		log.Printf("Error reading log file %s: %v", logFilePath, err)
@@ -617,9 +624,9 @@ func dumpLogFile(jfrogHome, fileName string) {
 }
 
 func dumpLogs(jfrogHome string) {
-	dumpLogFile(jfrogHome, "artifactory-service.log")
-	dumpLogFile(jfrogHome, "access-service.log")
-	dumpLogFile(jfrogHome, "router-service.log")
+	for _, serviceLog := range dumpServiceLogs {
+		dumpLogFile(jfrogHome, serviceLog)
+	}
 }
 
 type tokenInfo struct {
