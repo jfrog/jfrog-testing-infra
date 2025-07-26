@@ -32,13 +32,11 @@ const (
 	licenseEnv               = "RTLIC"
 	localArtifactoryUrl      = "http://localhost:8081/artifactory/"
 	// #nosec G101 -- False positive - no hardcoded credentials.
-	tokensApi         = "http://localhost:8082/access/api/v1/tokens"
-	defaultUsername   = "admin"
-	defaultPassword   = "password"
-	defaultVersion    = "[RELEASE]"
-	tokenJson         = "token.json"
-	generateTokenJson = "generate.token.json"
-	githubEnvFileEnv  = "GITHUB_ENV"
+	tokensApi        = "http://localhost:8082/access/api/v1/tokens"
+	defaultUsername  = "admin"
+	defaultPassword  = "password"
+	defaultVersion   = "[RELEASE]"
+	githubEnvFileEnv = "GITHUB_ENV"
 	// #nosec G101 -- False positive - no hardcoded credentials
 	jfrogLocalAccessToken = "JFROG_TESTS_LOCAL_ACCESS_TOKEN"
 )
@@ -59,6 +57,8 @@ var (
 		"observability-service.log",
 		"jfconfig-service.log",
 		"jfconnect-service.log",
+		"frontend-service.log",
+		"topology-service.log",
 	}
 
 	//go:embed system.yaml
@@ -85,24 +85,15 @@ func setupLocalArtifactory() (err error) {
 	}
 
 	rtVersion := flag.String("rt-version", defaultVersion, "the version of Artifactory to download")
+	connectionTimeoutSeconds := flag.Int("connection-timeout-seconds", maxConnectionWaitSeconds, "the amount of seconds to wait for Artifactory to start")
 	flag.Parse()
-	artifactory6 := false
-	if *rtVersion != defaultVersion {
-		versionParts := strings.Split(*rtVersion, ".")
-		if len(versionParts) != 3 {
-			return errors.New("the Artifactory version is invalid. It must be [RELEASE] or match this format: X.X.X")
-		}
-		majorVer, err := strconv.Atoi(versionParts[0])
-		if err != nil {
-			return err
-		}
-		if majorVer < 6 {
-			return errors.New("this tool supports Artifactory 6 or higher")
-		}
-		artifactory6 = majorVer == 6
+
+	isArtifactory6, err := checkArtifactoryVersion(*rtVersion)
+	if err != nil {
+		return err
 	}
 
-	pathToArchive, err := downloadArtifactory(jfrogHome, *rtVersion, artifactory6)
+	pathToArchive, err := downloadArtifactory(jfrogHome, *rtVersion, isArtifactory6)
 	if err != nil {
 		return err
 	}
@@ -115,7 +106,7 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	if !artifactory6 && isMac() {
+	if !isArtifactory6 && isMac() {
 		if err = os.Chmod(filepath.Join(jfrogHome, artifactoryVarPath), os.ModePerm); err != nil {
 			return err
 		}
@@ -124,12 +115,12 @@ func setupLocalArtifactory() (err error) {
 		}
 	}
 
-	if err = createLicenseFile(jfrogHome, license, artifactory6); err != nil {
+	if err = createLicenseFile(jfrogHome, license, isArtifactory6); err != nil {
 		return err
 	}
 
 	var binDir string
-	if artifactory6 {
+	if isArtifactory6 {
 		binDir = filepath.Join(jfrogHome, "artifactory", "bin")
 	} else {
 		binDir = filepath.Join(jfrogHome, "artifactory", "app", "bin")
@@ -143,12 +134,13 @@ func setupLocalArtifactory() (err error) {
 		return err
 	}
 
-	if err = waitForArtifactorySuccessfulPing(); err != nil {
+	if err = waitForArtifactorySuccessfulPing(*connectionTimeoutSeconds); err != nil {
+		dumpLogs(jfrogHome)
 		return err
 	}
 
-	if !artifactory6 {
-		adminToken, err := generateAccessToken()
+	if !isArtifactory6 {
+		adminToken, err := generateAccessToken(*connectionTimeoutSeconds)
 		if err != nil {
 			dumpLogs(jfrogHome)
 			return err
@@ -158,11 +150,33 @@ func setupLocalArtifactory() (err error) {
 		}
 	}
 
-	if err = setCustomUrlBase(); err != nil || artifactory6 {
+	if err = setCustomUrlBase(); err != nil || isArtifactory6 {
 		return err
 	}
 
 	return enableArchiveIndex()
+}
+
+func checkArtifactoryVersion(rtVersion string) (isV6 bool, err error) {
+	if rtVersion != defaultVersion {
+		versionParts := strings.Split(rtVersion, ".")
+		if len(versionParts) != 3 {
+			err = errors.New("the Artifactory version is invalid. It must be [RELEASE] or match this format: X.X.X")
+			return
+		}
+
+		majorVer, e := strconv.Atoi(versionParts[0])
+		if e != nil {
+			err = fmt.Errorf("failed parsing major version: %w", err)
+			return
+		}
+
+		if majorVer < 6 {
+			err = errors.New("this tool supports Artifactory 6 or higher")
+		}
+		isV6 = majorVer == 6
+	}
+	return
 }
 
 // Fix the bash 3 compatibility issue by removing the ,, from the artifactoryCommon.sh file.
@@ -252,8 +266,10 @@ func startArtifactory(binDir string) error {
 // doRequest - the function to run in the retry loop.
 // successMessage - the message to print when the connection is successful.
 // extractOutputData - if true, the response body will be processed and returned.
-func runInRetryLoop(doRequest func(ctx context.Context) (*http.Response, error), successMessage string, extractOutputData bool) (respBody []byte, err error) {
-	for timeElapsed := 0; timeElapsed < maxConnectionWaitSeconds; timeElapsed += waitSleepIntervalSeconds {
+func runInRetryLoop(doRequest func(ctx context.Context) (*http.Response, error), successMessage string, extractOutputData bool, timeoutSeconds int) ([]byte, error) {
+	startedAt := time.Now()
+	timeoutAt := startedAt.Add(time.Second * time.Duration(timeoutSeconds))
+	for time.Now().Before(timeoutAt) {
 		respBody, err, stop := tryRequest(doRequest, extractOutputData)
 		if stop {
 			log.Println(successMessage)
@@ -261,8 +277,7 @@ func runInRetryLoop(doRequest func(ctx context.Context) (*http.Response, error),
 		}
 		time.Sleep(time.Second * waitSleepIntervalSeconds)
 	}
-	err = errors.Join(err, fmt.Errorf("could not connect to Artifactory, reached timeout of %d seconds", maxConnectionWaitSeconds))
-	return
+	return nil, fmt.Errorf("could not connect to Artifactory, reached timeout of %d seconds", timeoutSeconds)
 }
 
 func tryRequest(doRequest func(ctx context.Context) (*http.Response, error), extractOutputData bool) (respData []byte, err error, stop bool) {
@@ -280,7 +295,7 @@ func tryRequest(doRequest func(ctx context.Context) (*http.Response, error), ext
 			_, _ = processResponseOutput(response, false) // Discard the response body
 		}
 		if !stop {
-			log.Printf("Artifactory response: %d. %s", response.StatusCode, tryingLog)
+			log.Printf("Received response: %d. %s", response.StatusCode, tryingLog)
 		}
 	}
 
@@ -306,9 +321,9 @@ func processResponseOutput(resp *http.Response, needContent bool) (output []byte
 	return
 }
 
-func waitForArtifactorySuccessfulPing() (err error) {
+func waitForArtifactorySuccessfulPing(timeoutSeconds int) (err error) {
 	log.Println("Waiting for successful connection with Artifactory...")
-	_, err = runInRetryLoop(ping, "Artifactory is up!", false)
+	_, err = runInRetryLoop(ping, "Artifactory is up!", false, timeoutSeconds)
 	return
 }
 
@@ -360,10 +375,10 @@ func exportTokenUsingGithubEnvFile(adminToken string) (err error) {
 	return
 }
 
-func generateAccessToken() (accessToken string, err error) {
+func generateAccessToken(timeoutSeconds int) (accessToken string, err error) {
 	log.Println("Generating access token...")
 	var respBody []byte
-	if respBody, err = runInRetryLoop(doGenerateAccessToken, "Successfully generated an access token!", true); err != nil {
+	if respBody, err = runInRetryLoop(doGenerateAccessToken, "Successfully generated an access token!", true, timeoutSeconds); err != nil {
 		return "", err
 	}
 
