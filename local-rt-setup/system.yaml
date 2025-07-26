@@ -8,5 +8,10 @@ shared:
     # Since 7.84.7, new Artifactory installations support only PostgreSQL. This option allows using the Derby DB.
     allowNonPostgresql: true
 
+frontend:
+  startup:
+    ping:
+      retries: 900
+
 evidence:
   enabled: false
