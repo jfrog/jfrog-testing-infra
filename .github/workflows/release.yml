@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      NEXT_VERSION:
+        description: "The version to release (e.g. 1.2.3)"
+        required: true
+      NEXT_DEVELOPMENT_VERSION:
+        description: "The next development/snapshot version (e.g. 1.2.4-SNAPSHOT)"
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: java
+    env:
+      CI: true
+      JFROG_BUILD_STATUS: PASS
+      JFROG_CLI_BUILD_NAME: ecosystem-testing-infra-release
+      JFROG_CLI_BUILD_NUMBER: ${{ github.run_number }}
+      JFROG_CLI_BUILD_PROJECT: ecosys
+      NEXT_VERSION: ${{ github.event.inputs.NEXT_VERSION }}
+      NEXT_DEVELOPMENT_VERSION: ${{ github.event.inputs.NEXT_DEVELOPMENT_VERSION }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.IL_AUTOMATION_TOKEN }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "8"
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+
+      - name: Run release
+        env:
+          ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          ARTIFACTORY_USER: ${{ secrets.ARTIFACTORY_USER }}
+          ARTIFACTORY_APIKEY: ${{ secrets.ARTIFACTORY_APIKEY }}
+        run: "$GITHUB_WORKSPACE/.github/scripts/release.sh"
