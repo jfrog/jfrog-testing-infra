@@ -243,7 +243,7 @@ func prepareJFrogHome() (string, error) {
 		return "", err
 	}
 	if exists {
-		return "", fmt.Errorf("artifactory dir already exists in jfrog home: " + filepath.Join(jfrogHome, "artifactory"))
+		return "", fmt.Errorf("artifactory dir already exists in jfrog home: %s", filepath.Join(jfrogHome, "artifactory"))
 	}
 	return jfrogHome, nil
 }
